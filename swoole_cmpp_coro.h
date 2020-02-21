@@ -154,23 +154,7 @@ typedef struct _CMPP2DELIVER_RESP
 
 
 
-#ifdef __APPLE__
-#include <libpq-fe.h>
-#endif
 
-#ifdef __linux__
-#include <postgresql/libpq-fe.h>
-#endif
-
-enum query_type
-{
-    NORMAL_QUERY, META_DATA, PREPARE
-};
-
-
-#define PGSQL_ASSOC           1<<0
-#define PGSQL_NUM             1<<1
-#define PGSQL_BOTH            (PGSQL_ASSOC|PGSQL_NUM)
 
 static zend_always_inline void cmpp_md5(unsigned char *digest, const char *src, size_t len)
 {
