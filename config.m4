@@ -22,9 +22,6 @@ PHP_ARG_ENABLE(asan, whether to enable asan,
 [  --enable-asan             Enable asan], no, no)
 
 
-PHP_ARG_WITH(libpq_dir, dir of libpq,
-[  --with-libpq-dir[=DIR]      Include libpq support (requires libpq >= 9.5)], no, no)
-
 AC_MSG_CHECKING([if compiling with clang])
 AC_COMPILE_IFELSE([
     AC_LANG_PROGRAM([], [[
@@ -66,17 +63,6 @@ if test "$PHP_swoole_cmpp" != "no"; then
         AC_DEFINE(SW_LOG_TRACE_OPEN, 1, [enable trace log])
     fi
 
-    if test "$PHP_LIBPQ" != "no" || test "$PHP_LIBPQ_DIR" != "no"; then
-        if test "$PHP_LIBPQ_DIR" != "no"; then
-            AC_DEFINE(HAVE_LIBPQ, 1, [have libpq])
-            AC_MSG_RESULT(libpq include success)
-            PHP_ADD_INCLUDE("${PHP_LIBPQ_DIR}/include")
-            PHP_ADD_LIBRARY_WITH_PATH(pq, "${PHP_LIBPQ_DIR}/${PHP_LIBDIR}")
-            PGSQL_INCLUDE=$PHP_LIBPQ_DIR/include
-        fi
-        AC_DEFINE(SW_USE_CMPP, 1, [enable coroutine-cmpp support])
-        PHP_ADD_LIBRARY(pq, 1, SWOOLE_CMPP_SHARED_LIBADD)
-    fi
 
     CFLAGS="-Wall -pthread $CFLAGS"
     LDFLAGS="$LDFLAGS -lpthread"
