@@ -21,7 +21,7 @@
 #include "config.h"
 extern "C"
 {
-#include "php/ext/standard/md5.h"
+#include "ext/standard/md5.h"
 }
 //#define CMPP2                           1
 #define PHP_SWOOLE_EXT_CMPP_VERSION     "4.4.13RC1"
