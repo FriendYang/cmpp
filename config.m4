@@ -1,5 +1,5 @@
 dnl $Id$
-dnl config.m4 for extension swoole_postgresql
+dnl config.m4 for extension swoole_cmpp
 
 dnl  +----------------------------------------------------------------------+
 dnl  | Swoole                                                               |
@@ -12,11 +12,11 @@ dnl  | If you did not receive a copy of the Apache2.0 license and are unable|
 dnl  | to obtain it through the world-wide-web, please send a note to       |
 dnl  | license@swoole.com so we can mail you a copy immediately.            |
 dnl  +----------------------------------------------------------------------+
-dnl  | Author: Tianfeng Han  <mikan.tenny@gmail.com>                        |
+dnl  | Author: xinhua.guo  <guoxinhua@swoole.com>                           |
 dnl  +----------------------------------------------------------------------+
 
-PHP_ARG_ENABLE(swoole_postgresql, swoole_postgresql support,
-[  --enable-swoole_postgresql           Enable swoole_postgresql support], [enable_swoole_postgresql="yes"])
+PHP_ARG_ENABLE(swoole_cmpp, swoole_cmpp support,
+[  --enable-swoole_cmpp           Enable swoole_cmpp support], [enable_swoole_cmpp="yes"])
 
 PHP_ARG_ENABLE(asan, whether to enable asan,
 [  --enable-asan             Enable asan], no, no)
@@ -40,12 +40,11 @@ if test "$CLANG" = "yes"; then
     CFLAGS="$CFLAGS -std=gnu89"
 fi
 
-if test "$PHP_swoole_postgresql" != "no"; then
+if test "$PHP_swoole_cmpp" != "no"; then
 
     PHP_ADD_LIBRARY(pthread)
-    PHP_SUBST(SWOOLE_POSTGRESQL_SHARED_LIBADD)
+    PHP_SUBST(SWOOLE_CMPP_SHARED_LIBADD)
 
-    AC_CHECK_LIB(pq, PQconnectdb, AC_DEFINE(HAVE_POSTGRESQL, 1, [have postgresql]))
 
     AC_ARG_ENABLE(debug,
         [  --enable-debug,         compile with debug symbols],
@@ -75,25 +74,25 @@ if test "$PHP_swoole_postgresql" != "no"; then
             PHP_ADD_LIBRARY_WITH_PATH(pq, "${PHP_LIBPQ_DIR}/${PHP_LIBDIR}")
             PGSQL_INCLUDE=$PHP_LIBPQ_DIR/include
         fi
-        AC_DEFINE(SW_USE_POSTGRESQL, 1, [enable coroutine-postgresql support])
-        PHP_ADD_LIBRARY(pq, 1, SWOOLE_POSTGRESQL_SHARED_LIBADD)
+        AC_DEFINE(SW_USE_CMPP, 1, [enable coroutine-cmpp support])
+        PHP_ADD_LIBRARY(pq, 1, SWOOLE_CMPP_SHARED_LIBADD)
     fi
 
     CFLAGS="-Wall -pthread $CFLAGS"
     LDFLAGS="$LDFLAGS -lpthread"
 
-    PHP_ADD_LIBRARY(pthread, 1, SWOOLE_POSTGRESQL_SHARED_LIBADD)
+    PHP_ADD_LIBRARY(pthread, 1, SWOOLE_CMPP_SHARED_LIBADD)
 
-    swoole_source_file="swoole_postgresql_coro.cc"
+    swoole_source_file="swoole_cmpp_coro.cc"
 
-    PHP_NEW_EXTENSION(swoole_postgresql, $swoole_source_file, $ext_shared,,, cxx)
+    PHP_NEW_EXTENSION(swoole_cmpp, $swoole_source_file, $ext_shared,,, cxx)
 
     PHP_ADD_INCLUDE([$ext_srcdir])
     PHP_ADD_INCLUDE([$ext_srcdir/include])
     PHP_ADD_INCLUDE([$phpincludedir/ext/swoole])
     PHP_ADD_INCLUDE([$phpincludedir/ext/swoole/include])
     
-    PHP_ADD_EXTENSION_DEP(swoole_postgresql, swoole)
+    PHP_ADD_EXTENSION_DEP(swoole_cmpp, swoole)
 
     PHP_REQUIRE_CXX()
     
