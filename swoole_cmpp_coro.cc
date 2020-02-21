@@ -19,8 +19,8 @@
 #include "php_swoole_cxx.h"
 #include "swoole_cmpp_coro.h"
 #include <string>
-#include <php/ext/standard/php_smart_string.h>
-#include <php/Zend/zend_API.h>
+#include "php/ext/standard/php_smart_string.h"
+#include "php/Zend/zend_API.h"
 #include "php_cmpp_library.h"
 
 
