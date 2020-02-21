@@ -20,12 +20,12 @@
                 [
             'sequence_start' => 100000,
             'sequence_end' => 10000000,//在这个区间循环使用id
-            'active_test_interval' => 1.5, //1.5s检测一次
+            'active_test_interval' => 1.5, //1.5s检测一次,用于判断连接假死(tcp断了但是没收到fin，例如拔网线)
             'active_test_num' => 10, //10次连续失败就切断连接
             'service_id' => "BYHY", //业务类型
             'src_id_prefix' => "10690831", //src_id的前缀+submit的扩展号就是整个src_id
             'sbumit_per_sec' => 100, //每秒多少条限速，达到这个速率后submit会自动Co sleep这个协程，睡眠的时间按照剩余的时间来
-            //例如每秒100会分成10分，100ms最多发10条，如果前10ms就发送完了10条，submit的时候会自动Co sleep 90ms。
+            //例如每秒100会分成10份，100ms最多发10条，如果前10ms就发送完了10条，submit的时候会自动Co sleep 90ms。
             'fee_type' => '05', //资费类别
                 ]
         );
@@ -109,7 +109,6 @@
                                     }
                               }
                              */
-    //                        $o->logout();
                             break;
                         default:
                             break;
