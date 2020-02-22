@@ -27,6 +27,9 @@ extern "C"
 #define PHP_SWOOLE_EXT_CMPP_VERSION     "4.4.13RC1"
 #define PHP_SWOOLE_EXT_CMPP_VERSION_ID  1.0
 
+#define htonll(x)   ((((uint64_t)htonl(x&0xFFFFFFFF)) << 32) + htonl(x >> 32))
+#define ntohll(x)   ((((uint64_t)ntohl(x&0xFFFFFFFF)) << 32) + ntohl(x >> 32))
+
 //
 //#define PHP_SWOOLE_EXT_CMPP_VERSION     "4.4.13RC1"
 //#define PHP_SWOOLE_EXT_CMPP_VERSION_ID  40413
@@ -60,6 +63,7 @@ extern "C"
 #define CONN_TESTING      6//active test的时候最好不要收发数据
 //#define CONN_BUSY         7//频率太高
 #define CONN_BROKEN       8
+#define BROKEN_MSG        "the connection is broken"
 
 #pragma pack (1)                                                                                 
 
@@ -126,7 +130,7 @@ typedef struct _CMPP2DELIVER_REQ
     uchar Service_Id[10];
     uchar TP_pid;
     uchar TP_udhi;
-    uchar Msg_Fat;
+    uchar Msg_Fmt;
     uchar Src_terminal_Id[21];
     uchar Registered_Delivery;
     uchar Msg_Length;
@@ -150,11 +154,17 @@ typedef struct _CMPP2DELIVER_RESP
     uchar Result;
 } cmpp2_delivery_resp;
 
+typedef struct _CMPP2UDHI_HEAD
+{
+    uchar v;
+    uchar v1;
+    uchar v2;
+    uchar udhi_id;
+    uchar total;
+    uchar pos;
+} udhi_head;
+
 #pragma pack ()
-
-
-
-
 
 static zend_always_inline void cmpp_md5(unsigned char *digest, const char *src, size_t len)
 {
@@ -194,12 +204,20 @@ static zend_always_inline char* cmpp2_make_req(uint32_t cmd, uint32_t sequence_I
     return ret;
 }
 
-
 static zend_always_inline long get_current_time()
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
+
+static zend_always_inline void format_msg_id(zval *ret_value, ulong msg_id)
+{
+    char tmp[128] = {0};
+    ulong tmp_long = ntohll(msg_id);
+    sprintf(tmp, "%lx", tmp_long);
+    add_assoc_string(ret_value, "Msg_Id", tmp);
+}
+
 
 #endif

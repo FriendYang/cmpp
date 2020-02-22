@@ -35,6 +35,7 @@ void swoole_cmpp_init(int module_number);
  */
 static const zend_module_dep swoole_cmpp_deps[] = {
     ZEND_MOD_REQUIRED("swoole")
+    ZEND_MOD_REQUIRED("mbstring")
     ZEND_MOD_END
 };
 /* }}} */
@@ -117,7 +118,7 @@ typedef struct {
 
 static PHP_METHOD(swoole_cmpp_coro, __construct);
 static PHP_METHOD(swoole_cmpp_coro, __destruct);
-static PHP_METHOD(swoole_cmpp_coro, login);
+static PHP_METHOD(swoole_cmpp_coro, dologin);
 static PHP_METHOD(swoole_cmpp_coro, recvOnePack);
 static PHP_METHOD(swoole_cmpp_coro, submit);
 static PHP_METHOD(swoole_cmpp_coro, activeTest);
@@ -127,7 +128,7 @@ static PHP_METHOD(swoole_cmpp_coro, logout);
 static const zend_function_entry swoole_cmpp_coro_methods[] = {
     PHP_ME(swoole_cmpp_coro, __construct, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, __destruct, NULL, ZEND_ACC_PUBLIC)
-    PHP_ME(swoole_cmpp_coro, login, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(swoole_cmpp_coro, dologin, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, recvOnePack, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, submit, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, activeTest, NULL, ZEND_ACC_PUBLIC)
@@ -158,10 +159,9 @@ static const zend_function_entry swoole_cmpp_coro_methods[] = {
             RETURN_FALSE;
 
 #define THROW_BROKEN\
-            zend_throw_exception_ex(\
-                NULL, errno,\
-                "%s: %d", "the connection is broken ", __LINE__ \
-                );
+    zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("errCode"), CONN_BROKEN);\
+    zend_update_property_string(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("errMsg"), BROKEN_MSG);\
+    RETURN_FALSE;
 
 static sw_inline socket_coro*
 php_swoole_cmpp_coro_fetch_object(zend_object *obj) {
@@ -217,6 +217,7 @@ php_swoole_cmpp_coro_minit(int module_number) {
     SW_REGISTER_LONG_CONSTANT("CMPP_CONN_NICE", CONN_NICE);
     SW_REGISTER_LONG_CONSTANT("CMPP_CONN_BROKEN", CONN_BROKEN);
     SW_REGISTER_LONG_CONSTANT("CMPP_CONN_BUSY", CONN_BUSY);
+    SW_REGISTER_LONG_CONSTANT("CMPP_CONN_CONNECTED", CONNECTED);
 
     SW_REGISTER_LONG_CONSTANT("CMPP2_ACTIVE_TEST_RESP", CMPP2_ACTIVE_TEST_RESP);
     SW_REGISTER_LONG_CONSTANT("CMPP2_TERMINATE_RESP", CMPP2_TERMINATE_RESP);
@@ -357,13 +358,13 @@ PHP_METHOD(swoole_cmpp_coro, __construct) {
 
 
 
-    if (php_swoole_array_get_value(vht, "sbumit_per_sec", ztmp))
+    if (php_swoole_array_get_value(vht, "submit_per_sec", ztmp))
     {
         sock->submit_limit_100ms = (uint32_t) (zval_get_long(ztmp) / 10);
     }
     else
     {
-        ERROR_AND_RETURN("sbumit_per_sec must be set");
+        ERROR_AND_RETURN("submit_per_sec must be set");
     }
 
 
@@ -421,7 +422,7 @@ cmpp2_recv_one_pack(socket_coro *sock, uint32_t *out) {
 }
 
 static
-PHP_METHOD(swoole_cmpp_coro, login) {
+PHP_METHOD(swoole_cmpp_coro, dologin) {
     char *host;
     size_t l_host;
     zend_long port = 0;
@@ -568,7 +569,6 @@ PHP_METHOD(swoole_cmpp_coro, login) {
 
 static sw_inline void
 swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
-    zend_long length = SW_BUFFER_SIZE_BIG;
     double timeout = -1;
     uint32_t Command_Id, out_len;
     void *buf = NULL;
@@ -577,11 +577,6 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
     Z_PARAM_OPTIONAL
     Z_PARAM_DOUBLE(timeout)
     ZEND_PARSE_PARAMETERS_END_EX(RETURN_FALSE);
-
-    if (UNEXPECTED(length <= 0))
-    {
-        length = SW_BUFFER_SIZE_BIG;
-    }
 
     swoole_get_socket_coro(sock, ZEND_THIS);
 
@@ -601,14 +596,14 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
         switch (Command_Id)
         {
             case CMPP2_ACTIVE_TEST_RESP:
-            {
+            {//不需要send
                 efree(buf);
                 sock->active_test_count = 0;
                 buf = cmpp2_recv_one_pack(sock, &out_len);
                 continue;
             }
             case CMPP2_ACTIVE_TEST:
-            {
+            {//需要push到send的channel
                 efree(buf);
                 sock->active_test_count = 0;
                 char *send_data = cmpp2_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), 0, NULL, &out_len);
@@ -616,10 +611,10 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 add_assoc_long(return_value, "Command", CMPP2_ACTIVE_TEST_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
                 efree(send_data);
-                continue;
+                return;
             }
             case CMPP2_TERMINATE:
-            {
+            {//需要push到send的channel
                 efree(buf);
                 char *send_data = cmpp2_make_req(CMPP2_TERMINATE_RESP, ntohl(resp_head->Sequence_Id), 0, NULL, &out_len);
                 array_init(return_value);
@@ -636,7 +631,8 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
                 add_assoc_long(return_value, "Command", CMPP2_SUBMIT_RESP);
                 cmpp2_submit_resp *submit_resp = (cmpp2_submit_resp*) ((char*) buf + sizeof (cmpp2_head));
-                add_assoc_long(return_value, "Msg_Id", ntohl(submit_resp->Msg_Id));
+                //                add_assoc_long(return_value, "Msg_Id", ntohll(submit_resp->Msg_Id));
+                format_msg_id(return_value, submit_resp->Msg_Id);
                 add_assoc_long(return_value, "Result", submit_resp->Result);
                 efree(buf);
                 return;
@@ -648,16 +644,17 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
                 add_assoc_long(return_value, "Command", CMPP2_DELIVER);
                 cmpp2_delivery_req *delivery_req = (cmpp2_delivery_req*) ((char*) buf + sizeof (cmpp2_head));
-                add_assoc_long(return_value, "Msg_Id", ntohl(delivery_req->Msg_Id));
+                //                add_assoc_long(return_value, "Msg_Id", ntohll(delivery_req->Msg_Id));
+                format_msg_id(return_value, delivery_req->Msg_Id);
                 add_assoc_string(return_value, "Dest_Id", (char*) delivery_req->Dest_Id);
                 add_assoc_string(return_value, "Service_Id", (char*) delivery_req->Service_Id);
-                add_assoc_long(return_value, "Msg_Fat", delivery_req->Msg_Fat);
+                add_assoc_long(return_value, "Msg_Fmt", delivery_req->Msg_Fmt);
                 add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
                 add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
 
                 uint32_t Msg_Length = delivery_req->Msg_Length;
 
-                if (delivery_req->Registered_Delivery == '0')
+                if (delivery_req->Registered_Delivery == 0)
                 {
                     add_assoc_stringl(return_value, "Msg_Content", (char*) delivery_req->Msg_Content, Msg_Length);
                 }
@@ -666,17 +663,18 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                     zval content;
                     array_init(&content);
                     cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
-                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
+                    //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
+                    format_msg_id(return_value, delivery_content->Msg_Id);
                     add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
-                    add_assoc_string(&content, "Submit_time", (char*) delivery_content->Submit_time);
-                    add_assoc_string(&content, "Done_time", (char*) delivery_content->Done_time);
+                    add_assoc_stringl(&content, "Submit_time", (char*) delivery_content->Submit_time, sizeof (delivery_content->Submit_time));
+                    add_assoc_stringl(&content, "Done_time", (char*) delivery_content->Done_time, sizeof (delivery_content->Done_time));
                     add_assoc_string(&content, "Dest_terminal_Id", (char*) delivery_content->Dest_terminal_Id);
                     add_assoc_long(&content, "SMSC_sequence", ntohl(delivery_content->SMSC_sequence));
 
                     add_assoc_zval(return_value, "Msg_Content", &content);
                 }
 
-                //需要send的部分
+                //需要push到send的channel的部分
                 cmpp2_delivery_resp del_resp;
                 del_resp.Msg_Id = ntohl(delivery_req->Msg_Id);
                 del_resp.Result = 0;
@@ -712,8 +710,9 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
     swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAM_PASSTHRU, false);
 }
 
-static sw_inline void
-swoole_cmpp_coro_submit(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
+static
+PHP_METHOD(swoole_cmpp_coro, submit) {
+
 
     char *mobile;
     size_t m_length;
@@ -721,14 +720,18 @@ swoole_cmpp_coro_submit(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
     size_t c_length;
     char *ext;
     size_t e_length;
-    double timeout = -1;
+    zend_long udhi = -1;//-1代表短短信
+    zend_long pk_total = 1;
+    zend_long pk_index = 1;
 
-    ZEND_PARSE_PARAMETERS_START(3, 4)
+    ZEND_PARSE_PARAMETERS_START(3, 6)
     Z_PARAM_STRING(mobile, m_length)
     Z_PARAM_STRING(content, c_length)
     Z_PARAM_STRING(ext, e_length)
     Z_PARAM_OPTIONAL
-    Z_PARAM_DOUBLE(timeout)
+    Z_PARAM_LONG(udhi)
+    Z_PARAM_LONG(pk_total)
+    Z_PARAM_LONG(pk_index)
     ZEND_PARSE_PARAMETERS_END_EX(RETURN_FALSE);
 
     swoole_get_socket_coro(sock, ZEND_THIS);
@@ -743,12 +746,12 @@ swoole_cmpp_coro_submit(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
             double sleep_sec = ((double) sleep_time) / 1000;
             System::sleep(sleep_sec);
             //            zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), CONN_BUSY);
-            sock->start_submit_time = time;
+            sock->start_submit_time = get_current_time();
             sock->submit_count = 0;
         }
     }
     else
-    {
+    {//下一轮100ms
         sock->start_submit_time = time;
         sock->submit_count = 0;
     }
@@ -757,16 +760,23 @@ swoole_cmpp_coro_submit(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
     //构造submit req
     cmpp2_submit_req submit_req = {0};
     submit_req.Msg_Id = 0;
-    submit_req.Pk_total = 1;
-    submit_req.Pk_number = 1;
-    //    submit_req.Registered_Delivery = 0; //for test
+    submit_req.Pk_total = pk_total;
+    submit_req.Pk_number = pk_index;
     submit_req.Registered_Delivery = 1;
     submit_req.Msg_level = 0;
     memcpy(submit_req.Service_Id, sock->service_id, sizeof (sock->service_id));
     submit_req.Fee_UserType = 0;
     //    submit_req.Fee_terminal_Id
     submit_req.TP_pId = 0;
-    submit_req.TP_udhi = 0;
+    if (udhi == -1)
+    {
+        submit_req.TP_udhi = 0;
+    }
+    else
+    {
+        submit_req.TP_udhi = 1;
+    }
+
     submit_req.Msg_Fmt = 8; //utf8
     memcpy(submit_req.Msg_src, sock->sp_id, sizeof (sock->sp_id));
     memcpy(submit_req.FeeType, sock->fee_type, sizeof (sock->fee_type));
@@ -796,7 +806,15 @@ swoole_cmpp_coro_submit(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
     head.Command_Id = htonl(CMPP2_SUBMIT);
     uint32_t sequence_id = cmpp_get_sequence_id(sock);
     head.Sequence_Id = htonl(sequence_id);
-    send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length;
+    if (udhi == -1)
+    {
+        send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length;
+    }
+    else
+    {
+        send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length + sizeof (udhi_head);
+    }
+
     head.Total_Length = htonl(send_len);
     char *p, *start;
     p = start = (char*) emalloc(send_len);
@@ -804,8 +822,27 @@ swoole_cmpp_coro_submit(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
     p += sizeof (cmpp2_head);
     memcpy(p, &submit_req, offsetof(cmpp2_submit_req, Msg_Content));
     p += offsetof(cmpp2_submit_req, Msg_Content);
-    memcpy(p, content, c_length);
-    p += c_length;
+
+    if (udhi == -1)
+    {
+        memcpy(p, content, c_length);
+        p += c_length;
+    }
+    else
+    {
+        udhi_head udhi_struct;
+        udhi_struct.v = 5; //??
+        udhi_struct.v1 = 0; //??
+        udhi_struct.v2 = 3; //??
+        udhi_struct.udhi_id = (uchar) udhi;
+        udhi_struct.total = (uchar) pk_total;
+        udhi_struct.pos = (uchar) pk_index;
+        memcpy(p, &udhi_struct, sizeof (udhi_head));
+        p += sizeof (udhi_head);
+        memcpy(p, content, c_length);
+        p += c_length;
+    }
+
     memcpy(p, submit_req.Reserve, sizeof (submit_req.Reserve));
 
     array_init(return_value);
@@ -813,12 +850,8 @@ swoole_cmpp_coro_submit(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
     add_assoc_long(return_value, "sequence_id", sequence_id);
     efree(start);
 
-    sock->submit_count++;
-}
 
-static
-PHP_METHOD(swoole_cmpp_coro, submit) {
-    swoole_cmpp_coro_submit(INTERNAL_FUNCTION_PARAM_PASSTHRU, false);
+    sock->submit_count++;
 }
 
 static
