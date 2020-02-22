@@ -67,7 +67,8 @@ int cmpp_eval(std::string code, std::string filename)
 
 PHP_RINIT_FUNCTION(swoole_cmpp)
 {
-    cmpp_eval(cmpp_library_source_cmpp2, "@cmpp-src/library/cmpp2.php");
+    //for test
+//    cmpp_eval(cmpp_library_source_cmpp2, "@cmpp-src/library/cmpp2.php");
     return SUCCESS;
 };
 
@@ -720,7 +721,7 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
     size_t c_length;
     char *ext;
     size_t e_length;
-    zend_long udhi = -1;//-1代表短短信
+    zend_long udhi = -1; //-1代表短短信
     zend_long pk_total = 1;
     zend_long pk_index = 1;
 
@@ -793,8 +794,15 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
     submit_req.DestUsr_tl = 1;
     //手机号
     memcpy(submit_req.Dest_terminal_Id, mobile, m_length);
-    //短信内容
-    submit_req.Msg_Length = c_length;
+    if (udhi == -1)
+    {
+        submit_req.Msg_Length = c_length;
+    }
+    else
+    {//Msg_Length包含udhi头长度
+        submit_req.Msg_Length = c_length + sizeof (udhi_head);
+    }
+
     //    submit_req.Msg_Content = content;
     //    submit_req.Msg_Content = estrdup(content);
     //    submit_req.Reserve;
