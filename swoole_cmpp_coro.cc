@@ -665,7 +665,7 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                     array_init(&content);
                     cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
                     //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
-                    format_msg_id(return_value, delivery_content->Msg_Id);
+                    format_msg_id(&content, delivery_content->Msg_Id);
                     add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
                     add_assoc_stringl(&content, "Submit_time", (char*) delivery_content->Submit_time, sizeof (delivery_content->Submit_time));
                     add_assoc_stringl(&content, "Done_time", (char*) delivery_content->Done_time, sizeof (delivery_content->Done_time));
