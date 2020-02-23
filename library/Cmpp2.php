@@ -97,6 +97,7 @@ class Cmpp2
 
     public function recv(float $timeout = -1)
     {
+     again:
         $ret = $this->cmpp->recvOnePack($timeout);
         if ($ret === false) {
             $this->syncErr();
@@ -105,7 +106,6 @@ class Cmpp2
             }
             return FALSE;
         }
-        again:
         switch ($ret['Command']) {
             case CMPP2_ACTIVE_TEST_RESP:
             case CMPP2_TERMINATE_RESP:
