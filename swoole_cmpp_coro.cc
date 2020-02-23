@@ -68,7 +68,7 @@ int cmpp_eval(std::string code, std::string filename)
 PHP_RINIT_FUNCTION(swoole_cmpp)
 {
     //for test
-//    cmpp_eval(cmpp_library_source_cmpp2, "@cmpp-src/library/cmpp2.php");
+    cmpp_eval(cmpp_library_source_cmpp2, "@cmpp-src/library/cmpp2.php");
     return SUCCESS;
 };
 
