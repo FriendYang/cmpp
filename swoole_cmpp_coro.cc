@@ -753,7 +753,9 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
         }
     }
     else
-    {//下一轮100ms
+    {
+        ulong surplus = sock->submit_limit_100ms-sock->submit_count;
+        
         sock->start_submit_time = time;
         sock->submit_count = 0;
     }

@@ -52,6 +52,7 @@ static char* cmpp_library_source_cmpp2 =
     "            } else {\n"
     "                $this->errMsg = $this->cmpp->errMsg;\n"
     "                $this->errCode = $this->cmpp->errCode;\n"
+    "                $this->cmpp = null;\n"
     "                return $ret;\n"
     "            }\n"
     "        } else {\n"

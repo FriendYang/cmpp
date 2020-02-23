@@ -47,6 +47,7 @@ class Cmpp2
             } else {
                 $this->errMsg = $this->cmpp->errMsg;
                 $this->errCode = $this->cmpp->errCode;
+                $this->cmpp = null;
                 return $ret;
             }
         } else {
