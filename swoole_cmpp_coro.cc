@@ -652,10 +652,14 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
                 add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
 
+                 //需要push到send的channel的部分
+                cmpp2_delivery_resp del_resp;
+                
                 uint32_t Msg_Length = delivery_req->Msg_Length;
 
                 if (delivery_req->Registered_Delivery == 0)
                 {
+                    del_resp.Msg_Id = convert_ll(delivery_req->Msg_Id);
                     add_assoc_stringl(return_value, "Msg_Content", (char*) delivery_req->Msg_Content, Msg_Length);
                 }
                 else
@@ -663,6 +667,7 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                     zval content;
                     array_init(&content);
                     cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
+                    del_resp.Msg_Id = convert_ll(delivery_content->Msg_Id);
                     //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
                     format_msg_id(&content, delivery_content->Msg_Id);
                     add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
@@ -674,9 +679,6 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                     add_assoc_zval(return_value, "Msg_Content", &content);
                 }
 
-                //需要push到send的channel的部分
-                cmpp2_delivery_resp del_resp;
-                del_resp.Msg_Id = ntohll(delivery_req->Msg_Id);
                 del_resp.Result = 0;
                 char *send_data = cmpp2_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);

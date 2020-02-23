@@ -211,6 +211,13 @@ static zend_always_inline long get_current_time()
     return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+static zend_always_inline ulong convert_ll(ulong msg_id)
+{
+    ulong tmp_long = ntohll(msg_id);
+    return tmp_long;
+}
+
+
 static zend_always_inline void format_msg_id(zval *ret_value, ulong msg_id)
 {
     char tmp[128] = {0};
