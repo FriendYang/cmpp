@@ -645,7 +645,6 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
                 add_assoc_long(return_value, "Command", CMPP2_DELIVER);
                 cmpp2_delivery_req *delivery_req = (cmpp2_delivery_req*) ((char*) buf + sizeof (cmpp2_head));
-                //                add_assoc_long(return_value, "Msg_Id", ntohll(delivery_req->Msg_Id));
                 format_msg_id(return_value, delivery_req->Msg_Id);
                 add_assoc_string(return_value, "Dest_Id", (char*) delivery_req->Dest_Id);
                 add_assoc_string(return_value, "Service_Id", (char*) delivery_req->Service_Id);
@@ -677,7 +676,7 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
 
                 //需要push到send的channel的部分
                 cmpp2_delivery_resp del_resp;
-                del_resp.Msg_Id = ntohl(delivery_req->Msg_Id);
+                del_resp.Msg_Id = ntohll(delivery_req->Msg_Id);
                 del_resp.Result = 0;
                 char *send_data = cmpp2_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
