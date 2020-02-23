@@ -41,6 +41,41 @@
             var_dump($o->errCode); //此处需要业务自己做重连
             die;
         }
+//使用submitArr批量发送短信，此方法会将发送的cpu优先级调高。
+    go(function() use ($o) {
+        $arr = array(
+            array(
+                'mobile' => '15811413647',
+                'text' => '测试短信',
+                'ext' => '0000',
+                'udhi' => 1, //短短信会忽略这个参数
+            ),
+            array(
+                'mobile' => '15811413647',
+                'text' => '测试短信',
+                'ext' => '0000',
+                'udhi' => 2,
+            ),
+            array(
+                'mobile' => '15811413647',
+                'text' => '测试短信',
+                'ext' => '0000',
+                'udhi' => 3,
+            )
+        );
+        $start = microtime(true) * 1000;
+        $req_arr = $o->submitArr($arr, -1); //默认-1 永不超时
+        if ($req_arr === false) {
+            if ($o->errCode === CMPP_CONN_BROKEN) {
+                echo "连接断开\n";
+                //此处需要业务自己做重连
+            }
+            var_dump($o->errMsg);
+        }
+        var_dump($req_arr);
+        $end = microtime(true) * 1000;
+        echo "take " . ($end - $start) . "\n";
+    });
         //发送短信协程
         go(function() use ($o) {
             $text = "测试短信";

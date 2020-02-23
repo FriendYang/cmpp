@@ -96,6 +96,7 @@ static zend_object_handlers swoole_cmpp_coro_handlers;
 
 typedef struct {
     Socket *socket;
+    zend_bool is_broken;
 //    Coroutine* co;
     swTimer_node *timer;
     smart_string timer_recv_buf;//心跳定时器如果读到了其他的数据就放到buf里面.其他对方recv的时候优先读取buf里面的内容
@@ -159,7 +160,7 @@ static const zend_function_entry swoole_cmpp_coro_methods[] = {
             sock->socket = nullptr;\
             RETURN_FALSE;
 
-#define THROW_BROKEN\
+#define SET_BROKEN\
     zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("errCode"), CONN_BROKEN);\
     zend_update_property_string(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("errMsg"), BROKEN_MSG);\
     RETURN_FALSE;
@@ -581,10 +582,10 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
 
     swoole_get_socket_coro(sock, ZEND_THIS);
 
-    zval *status = sw_zend_read_property(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), 0);
-    if (Z_LVAL_P(status) == CONN_BROKEN)
+    if (sock->is_broken)
     {
-        THROW_BROKEN;
+        SET_BROKEN;
+        RETURN_FALSE;
     }
 
     Socket::timeout_setter ts(sock->socket, timeout, SW_TIMEOUT_READ);
@@ -622,8 +623,15 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 add_assoc_long(return_value, "Command", CMPP2_TERMINATE_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
                 efree(send_data);
-                zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), CONN_BROKEN);
+                sock->is_broken = 1;
                 return;
+            }
+            case CMPP2_TERMINATE_RESP:
+            {//不需要send  主动logout的回复包
+                efree(buf);
+                sock->is_broken = 1;
+                SET_BROKEN;
+                RETURN_FALSE;
             }
             case CMPP2_SUBMIT_RESP:
             {//不需要send
@@ -652,9 +660,9 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
                 add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
 
-                 //需要push到send的channel的部分
+                //需要push到send的channel的部分
                 cmpp2_delivery_resp del_resp;
-                
+
                 uint32_t Msg_Length = delivery_req->Msg_Length;
 
                 if (delivery_req->Registered_Delivery == 0)
@@ -702,7 +710,7 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
     swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
     if (sock->socket->errCode != ETIMEDOUT)
     {//没返回正确结果，并且不是超时，证明连接出了问题
-        THROW_BROKEN;
+        SET_BROKEN;
     }
     RETURN_FALSE;
 }
@@ -738,6 +746,12 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
 
     swoole_get_socket_coro(sock, ZEND_THIS);
 
+    if (sock->is_broken)
+    {
+        SET_BROKEN;
+        RETURN_FALSE;
+    }
+
     long time = get_current_time();
 
     if (time - sock->start_submit_time < 100)
@@ -746,16 +760,12 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
         {
             long sleep_time = 100 - (time - sock->start_submit_time);
             double sleep_sec = ((double) sleep_time) / 1000;
-            System::sleep(sleep_sec);
-            //            zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), CONN_BUSY);
-            sock->start_submit_time = get_current_time();
-            sock->submit_count = 0;
+            //            System::sleep(sleep_sec);
+            RETURN_DOUBLE((sleep_sec + 0.001));//+1ms
         }
     }
     else
-    {
-        ulong surplus = sock->submit_limit_100ms-sock->submit_count;
-        
+    {//下一轮100ms
         sock->start_submit_time = time;
         sock->submit_count = 0;
     }
@@ -863,6 +873,8 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
 
 
     sock->submit_count++;
+
+    zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), CONN_NICE);
 }
 
 static
@@ -876,7 +888,7 @@ PHP_METHOD(swoole_cmpp_coro, activeTest) {
     sock->active_test_count++;
     if (sock->active_test_count > sock->active_test_num)
     {
-        zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), CONN_BROKEN);
+        sock->is_broken = 1;
         sock->active_test_count = 0;
         RETURN_FALSE;
     }
@@ -904,20 +916,13 @@ PHP_METHOD(swoole_cmpp_coro, sendOnePack) {
 
     swoole_get_socket_coro(sock, ZEND_THIS);
 
-
-    zval *status = sw_zend_read_property(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), 0);
-    if (Z_LVAL_P(status) == CONN_BROKEN)
-    {
-        THROW_BROKEN;
-    }
-
     Socket::timeout_setter ts(sock->socket, -1, SW_TIMEOUT_WRITE);
     size_t bytes = sock->socket->send_all(data, length);
     swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
 
     if (bytes != length)
     {
-        THROW_BROKEN;
+        sock->is_broken = 1;
     }
     else
     {
@@ -930,16 +935,25 @@ PHP_METHOD(swoole_cmpp_coro, sendOnePack) {
 static
 PHP_METHOD(swoole_cmpp_coro, logout) {
     swoole_get_socket_coro(sock, ZEND_THIS);
-    if (sock->socket->close())
-    {
-        delete sock->socket;
-        sock->socket = nullptr;
-    }
-    if (sock->timer)
-    {
-        swoole_timer_clear(sock->timer->id);
-    }
-    RETURN_TRUE;
+
+    cmpp_get_sequence_id(sock);
+    uint32_t send_len;
+    char *send_data = cmpp2_make_req(CMPP2_TERMINATE, sock->sequence_id, 0, NULL, &send_len);
+    RETVAL_STRINGL(send_data, send_len);
+
+    //    Socket::timeout_setter ts(sock->socket, -1, SW_TIMEOUT_WRITE);
+    //    sock->socket->send_all(send_data, send_len);
+    //    swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
+    //
+    //    sock->is_broken = 1;    
+    //    
+    //    if (sock->socket->close())
+    //    {
+    //        delete sock->socket;
+    //        sock->socket = nullptr;
+    //    }
+
+    efree(send_data);
 }
 
 /* {{{ PHP_MINIT_FUNCTION
