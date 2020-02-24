@@ -898,7 +898,6 @@ PHP_METHOD(swoole_cmpp_coro, activeTest) {
     swoole_get_socket_coro(sock, ZEND_THIS);
 
     sock->active_test_count++;
-    printf("fuck %d\n", sock->active_test_count);
     if (sock->active_test_count > sock->active_test_num)
     {
         sock->is_broken = 1;
