@@ -1,13 +1,13 @@
 <?php
-
 namespace Swoole\Coroutine;
 
 class Cmpp2
-{
+{//cmpp容器类
 
-    private $cmpp = NULL;
+    private $cmpp = NULL; //cmpp实例
     private $setting = [];
     private $sendChannel = NULL;
+
 //    private $recvCid = -1;
 //    private $submitting = 0;
 //    private $recvWating = 0;
@@ -16,6 +16,12 @@ class Cmpp2
     public function __construct($set)
     {
         $this->setting = $set;
+    }
+
+    private function connBroken()
+    {//连接断开 销毁实例 结束协程
+        $this->cmpp->close();
+        $this->cmpp = NULL;
     }
 
     public function login($ip, $port, $uname, $pwd, float $timeout = -1)
@@ -33,6 +39,9 @@ class Cmpp2
                             break; //结束协程
                         }
                         $pingData = $this->cmpp->activeTest();
+                        if ($pingData === FALSE) {
+                            return $this->cmpp->close();
+                        }
                         if ($pingData) {
                             $this->sendChannel->push($pingData);
                         }
@@ -68,7 +77,7 @@ class Cmpp2
         $ret = $this->cmpp->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);
         if ($ret === FALSE) {
             $this->syncErr();
-            $this->cmpp = null;
+            $this->connBroken();
             return FALSE;
         }
         if (is_double($ret)) {
@@ -172,7 +181,7 @@ class Cmpp2
         if ($ret === false) {
             $this->syncErr();
             if ($this->errCode === CMPP_CONN_BROKEN) {
-                $this->cmpp = null;
+                $this->connBroken();
             }
             return FALSE;
         }

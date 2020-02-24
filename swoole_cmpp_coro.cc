@@ -126,10 +126,12 @@ static PHP_METHOD(swoole_cmpp_coro, submit);
 static PHP_METHOD(swoole_cmpp_coro, activeTest);
 static PHP_METHOD(swoole_cmpp_coro, sendOnePack);
 static PHP_METHOD(swoole_cmpp_coro, logout);
+static PHP_METHOD(swoole_cmpp_coro, close);
 
 static const zend_function_entry swoole_cmpp_coro_methods[] = {
     PHP_ME(swoole_cmpp_coro, __construct, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, __destruct, NULL, ZEND_ACC_PUBLIC)
+            PHP_ME(swoole_cmpp_coro, close, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, dologin, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, recvOnePack, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, submit, NULL, ZEND_ACC_PUBLIC)
@@ -389,6 +391,18 @@ PHP_METHOD(swoole_cmpp_coro, __destruct) {
 
 }
 
+static
+PHP_METHOD(swoole_cmpp_coro, close) {
+
+    socket_coro *sock = (socket_coro *) php_swoole_cmpp_coro_fetch_object(Z_OBJ_P(ZEND_THIS));
+
+    if (sock->socket->close())
+    {
+        delete sock->socket;
+        sock->socket = nullptr;
+    }
+}
+
 static void*
 cmpp2_recv_one_pack(socket_coro *sock, uint32_t *out) {
     cmpp2_head resp_head;
@@ -569,8 +583,9 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
     add_assoc_long(return_value, "Version", resp_data.Version);
 }
 
-static sw_inline void
-swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
+static
+PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
+
     double timeout = -1;
     uint32_t Command_Id, out_len;
     void *buf = NULL;
@@ -609,7 +624,7 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 efree(buf);
                 sock->active_test_count = 0;
                 cmpp2_active_resp active_resp = {0};
-                char *send_data = cmpp2_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), sizeof(active_resp), &active_resp, &out_len);
+                char *send_data = cmpp2_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), sizeof (active_resp), &active_resp, &out_len);
                 array_init(return_value);
                 add_assoc_long(return_value, "Command", CMPP2_ACTIVE_TEST_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -635,7 +650,7 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 RETURN_FALSE;
             }
             case CMPP2_SUBMIT_RESP:
-            {//不需要send
+            {//收到submit的回执，不需要send
                 array_init(return_value);
                 sock->active_test_count = 0;
                 add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
@@ -648,7 +663,7 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 return;
             }
             case CMPP2_DELIVER:
-            {
+            {//收到delivery投递
                 array_init(return_value);
                 sock->active_test_count = 0;
                 add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
@@ -717,11 +732,6 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
 }
 
 static
-PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
-    swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAM_PASSTHRU, false);
-}
-
-static
 PHP_METHOD(swoole_cmpp_coro, submit) {
 
 
@@ -762,8 +772,8 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
             long sleep_time = 100 - (time - sock->start_submit_time);
             double sleep_sec = ((double) sleep_time) / 1000;
             //            System::sleep(sleep_sec);
-            RETURN_DOUBLE((sleep_sec));//+1ms
-//            RETURN_DOUBLE((sleep_sec + 0.001));//+1ms
+            RETURN_DOUBLE((sleep_sec)); //+1ms
+            //            RETURN_DOUBLE((sleep_sec + 0.001));//+1ms
         }
     }
     else
@@ -888,6 +898,7 @@ PHP_METHOD(swoole_cmpp_coro, activeTest) {
     swoole_get_socket_coro(sock, ZEND_THIS);
 
     sock->active_test_count++;
+    printf("fuck %d\n", sock->active_test_count);
     if (sock->active_test_count > sock->active_test_num)
     {
         sock->is_broken = 1;
@@ -926,10 +937,10 @@ PHP_METHOD(swoole_cmpp_coro, sendOnePack) {
     {
         sock->is_broken = 1;
     }
-    else
-    {
-        sock->active_test_count = 0;
-    }
+    //    else
+    //    {
+    //        sock->active_test_count = 0;
+    //    }
 
     RETURN_LONG(length);
 }
