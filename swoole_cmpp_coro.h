@@ -75,6 +75,11 @@ typedef struct _CMPP2HEAD
 
 } cmpp2_head;
 
+typedef struct _CMPP2ACTIVE_RESP
+{
+    uchar Reserved;
+} cmpp2_active_resp;
+
 typedef struct _CMPP2CONNECT_REQ
 {
     unsigned char Source_Addr[6];

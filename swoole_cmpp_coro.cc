@@ -598,17 +598,18 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
         switch (Command_Id)
         {
             case CMPP2_ACTIVE_TEST_RESP:
-            {//不需要send
+            {//收到心跳回执，不需要send
                 efree(buf);
                 sock->active_test_count = 0;
                 buf = cmpp2_recv_one_pack(sock, &out_len);
                 continue;
             }
             case CMPP2_ACTIVE_TEST:
-            {//需要push到send的channel
+            {//收到心跳，需要push到send的channel
                 efree(buf);
                 sock->active_test_count = 0;
-                char *send_data = cmpp2_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), 0, NULL, &out_len);
+                cmpp2_active_resp active_resp = {0};
+                char *send_data = cmpp2_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), sizeof(active_resp), &active_resp, &out_len);
                 array_init(return_value);
                 add_assoc_long(return_value, "Command", CMPP2_ACTIVE_TEST_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -616,7 +617,7 @@ swoole_cmpp_coro_recv(INTERNAL_FUNCTION_PARAMETERS, const bool all) {
                 return;
             }
             case CMPP2_TERMINATE:
-            {//需要push到send的channel
+            {//收到断开连接，需要push到send的channel
                 efree(buf);
                 char *send_data = cmpp2_make_req(CMPP2_TERMINATE_RESP, ntohl(resp_head->Sequence_Id), 0, NULL, &out_len);
                 array_init(return_value);
