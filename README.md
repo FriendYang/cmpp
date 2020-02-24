@@ -19,48 +19,49 @@
         \Co\run(function() {
 
         $o = new \Co\Cmpp2(
-                [
-            'sequence_start' => 100000,
-            'sequence_end' => 10000000, //在这个区间循环使用id，重新登录时候将从新在sequence_start开始
-            'active_test_interval' => 100000000.5, //1.5s检测一次
-            'active_test_num' => 10, //10次连续失败就切断连接
-            'service_id' => "BYHY", //业务类型
-            'src_id_prefix' => "10690831", //src_id的前缀+submit的扩展号就是整个src_id
-            'submit_per_sec' => 100, //每秒多少条限速，达到这个速率后submit会自动Co sleep这个协程，睡眠的时间按照剩余的时间来
-            //例如每秒100，会分成10分，100ms最多发10条，如果前10ms就发送完了10条，submit的时候会自动Co sleep 90ms。
-            'fee_type' => '05', //资费类别
-                ]
-        );
+            [
+        'sequence_start' => 100000,
+        'sequence_end' => 10000000, //在这个区间循环使用id，重新登录时候将从新在sequence_start开始
+        'active_test_interval' => 1.5, //1.5s检测一次
+        'active_test_num' => 3, //10次连续失败就切断连接
+        'service_id' => "BYHY", //业务类型
+        'src_id_prefix' => "10690831", //src_id的前缀+submit的扩展号就是整个src_id
+        'submit_per_sec' => 2000, //每秒多少条限速，达到这个速率后submit会自动Co sleep这个协程，睡眠的时间按照剩余的时间来
+        //例如每秒100，会分成10分，100ms最多发10条，如果前10ms就发送完了10条，submit的时候会自动Co sleep 90ms。
+        'fee_type' => '01', //资费类别
+            ]
+    );
+    $arr = $o->login("127.0.0.1", 7890, "666666", "666666", 10); //10s登录超时
+    //$arr是loginResponse
+    if ($arr['Status'] === 0) {
+        echo "登录成功\n";
+    } else {
+        var_dump($arr);
+        var_dump($o->errMsg);
+        var_dump($o->errCode); //此处需要业务自己做重连
         $arr = $o->login("127.0.0.1", 7890, "666666", "666666", 10); //10s登录超时
-        //$arr是loginResponse
-        if ($arr['Status'] === 0) {
-            echo "登录成功\n";
-        } else {
-            var_dump($arr);
-            var_dump($o->errMsg);
-            var_dump($o->errCode); //此处需要业务自己做重连
-            die;
-        }
-
-        //发送协程
-         go(function() use ($o) {
-                $text = "测试短信";
-                $i = 100;
-                $start = microtime(true) * 1000;
-                while ($i--) {
-                    $req_arr = $o->submit("15811413647", $text, "0000", -1); //默认-1 永不超时
-                    if ($req_arr === false) {
-                        if ($o->errCode === CMPP_CONN_BROKEN) {
-                            echo "连接断开\n";
-                            return;//推出协程
-                        }
-                        var_dump($o->errMsg);
-                    }
-        //            var_dump($req_arr);
+        var_dump($arr);
+        die;
+    }
+//    发送短信协程
+    go(function() use ($o) {
+        $text = "测试短信";
+        $i = 20000;
+        $start = microtime(true) * 1000;
+        while ($i--) {
+            $req_arr = $o->submit("15811413647", $text, "0000", -1); //默认-1 永不超时
+            if ($req_arr === false) {
+                if ($o->errCode === CMPP_CONN_BROKEN) {
+                    echo "连接断开\n";
+                    return;//推出协程
                 }
-                $end = microtime(true) * 1000;
-                echo "take " . ($end - $start) . "\n";
-            });
+                var_dump($o->errMsg);
+            }
+//            var_dump($req_arr);
+        }
+        $end = microtime(true) * 1000;
+        echo "take " . ($end - $start) . "\n";
+    });
             //长短信mb_strlen($text, 'UTF-8')>70
         //    go(function() use ($o) {
         //        $text = "测试长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长"
