@@ -8,10 +8,10 @@ class Cmpp2
     private $cmpp = NULL;
     private $setting = [];
     private $sendChannel = NULL;
-    private $recvCid = -1;
-    private $submitting = 0;
-    private $recvWating = 0;
-    private $inbatch = 0;
+//    private $recvCid = -1;
+//    private $submitting = 0;
+//    private $recvWating = 0;
+//    private $inbatch = 0;
 
     public function __construct($set)
     {
@@ -72,20 +72,19 @@ class Cmpp2
             return FALSE;
         }
         if (is_double($ret)) {
-            if ($this->inbatch) {//证明submitArr触发的realSubmit
-                $this->submitting = 0;
-                if ($this->recvWating) {
-                    \Swoole\Coroutine::resume($this->recvCid);
-                }
-                \Swoole\Coroutine::sleep($ret);
-                $this->submitting = 1;
-            } else {
-                \Swoole\Coroutine::sleep($ret);
-            }
+//            if ($this->inbatch) {//证明submitArr触发的realSubmit
+//                $this->submitting = 0;
+//                if ($this->recvWating) {
+//                    \Swoole\Coroutine::resume($this->recvCid);
+//                }
+//                \Swoole\Coroutine::sleep($ret);
+//                $this->submitting = 1;
+//            } else {
+            \Swoole\Coroutine::sleep($ret);
+//            }
             goto again;
         }
 
-//        $this->submitChannel->push(1, $timeout);
         $cRet = $this->sendChannel->push($ret['packdata'], $timeout);
         if ($cRet === FALSE) {
             $this->errCode = $this->sendChannel->errCode;
@@ -106,26 +105,26 @@ class Cmpp2
      */
     /*
      * submit优先于recv里面逻辑
-     * 如果撞上了recv yield，恢复方式有2种，1是submit超过限速sleep时候唤醒，2是submitArr函数结束。
+     * 如果撞上了，recv yield，恢复方式有2种，1是submit超过限速sleep时候唤醒，2是submitArr函数结束。
      */
 
-    public function submitArr($arr, $timeout = -1)
-    {
-        $this->submitting = $this->inbatch = 1;
-        $seqArr = [];
-        foreach ($arr as $msg) {
-            $tmp = $this->submit($msg['mobile'], $msg['text'], $msg['ext'], $timeout, $msg['udhi']);
-            if ($tmp === false) {
-                $tmp = [FALSE];
-            }
-            $seqArr = array_merge($tmp, $seqArr);
-        }
-        $this->submitting = $this->inbatch = 0;
-        if ($this->recvWating) {
-            \Swoole\Coroutine::resume($this->recvCid);
-        }
-        return $seqArr;
-    }
+//    public function submitArr($arr, $timeout = -1)
+//    {
+//        $this->submitting = $this->inbatch = 1;
+//        $seqArr = [];
+//        foreach ($arr as $msg) {
+//            $tmp = $this->submit($msg['mobile'], $msg['text'], $msg['ext'], $timeout, $msg['udhi']);
+//            if ($tmp === false) {
+//                $tmp = [FALSE];
+//            }
+//            $seqArr = array_merge($tmp, $seqArr);
+//        }
+//        $this->submitting = $this->inbatch = 0;
+//        if ($this->recvWating) {
+//            \Swoole\Coroutine::resume($this->recvCid);
+//        }
+//        return $seqArr;
+//    }
 
     public function submit($mobile, $text, $ext, float $timeout = -1, int $udhi = -1)
     {
@@ -159,16 +158,16 @@ class Cmpp2
 
     public function recv(float $timeout = -1)
     {
-        if ($this->recvCid == -1) {
-            $this->recvCid = \Swoole\Coroutine::getCid();
-        }
+//        if ($this->recvCid == -1) {
+//            $this->recvCid = \Swoole\Coroutine::getCid();
+//        }
         again:
 
-        if ($this->submitting === 1) {
-            $this->recvWating = 1;
-            \Swoole\Coroutine::suspend();
-            $this->recvWating = 0;
-        }
+//        if ($this->submitting === 1) {
+//            $this->recvWating = 1;
+//            \Swoole\Coroutine::suspend();
+//            $this->recvWating = 0;
+//        }
         $ret = $this->cmpp->recvOnePack($timeout);
         if ($ret === false) {
             $this->syncErr();
@@ -181,7 +180,6 @@ class Cmpp2
             case CMPP2_ACTIVE_TEST_RESP:
             case CMPP2_TERMINATE_RESP://对端主动断开给回复的包
                 $this->sendChannel->push($ret["packdata"]);
-                $ret = $this->cmpp->recvOnePack($timeout);
                 goto again;
             case CMPP2_DELIVER:
                 $this->sendChannel->push($ret["packdata"]);

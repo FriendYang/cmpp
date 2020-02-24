@@ -762,7 +762,8 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
             long sleep_time = 100 - (time - sock->start_submit_time);
             double sleep_sec = ((double) sleep_time) / 1000;
             //            System::sleep(sleep_sec);
-            RETURN_DOUBLE((sleep_sec + 0.001));//+1ms
+            RETURN_DOUBLE((sleep_sec));//+1ms
+//            RETURN_DOUBLE((sleep_sec + 0.001));//+1ms
         }
     }
     else
