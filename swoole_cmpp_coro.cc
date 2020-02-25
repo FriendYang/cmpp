@@ -379,15 +379,12 @@ PHP_METHOD(swoole_cmpp_coro, __destruct) {
 
     socket_coro *sock = (socket_coro *) php_swoole_cmpp_coro_fetch_object(Z_OBJ_P(ZEND_THIS));
 
-    if (sock->socket->close())
+    if (sock->socket && sock->socket != nullptr)
     {
+        sock->socket->close();
         delete sock->socket;
         sock->socket = nullptr;
     }
-    //    if (sock->timer)
-    //    {
-    //        swoole_timer_clear(sock->timer->id);
-    //    }
 
 }
 
@@ -396,8 +393,9 @@ PHP_METHOD(swoole_cmpp_coro, close) {
 
     socket_coro *sock = (socket_coro *) php_swoole_cmpp_coro_fetch_object(Z_OBJ_P(ZEND_THIS));
 
-    if (sock->socket->close())
+    if (sock->socket && sock->socket != nullptr)
     {
+        sock->socket->close();
         delete sock->socket;
         sock->socket = nullptr;
     }
