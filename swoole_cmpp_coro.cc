@@ -94,29 +94,6 @@ ZEND_GET_MODULE(swoole_cmpp)
 zend_class_entry *swoole_cmpp_coro_ce;
 static zend_object_handlers swoole_cmpp_coro_handlers;
 
-typedef struct {
-    Socket *socket;
-    zend_bool is_broken;
-//    Coroutine* co;
-    swTimer_node *timer;
-    smart_string timer_recv_buf;//心跳定时器如果读到了其他的数据就放到buf里面.其他对方recv的时候优先读取buf里面的内容
-    uint32_t sequence_id;
-    uint32_t sequence_start;
-    uint32_t sequence_end;
-    uint32_t active_test_num;
-    uint32_t active_test_count;//计数
-    double active_test_interval;
-//    double active_test_timeout;
-    //about business
-    char service_id[10];
-    char src_id_prefix[20];
-    char sp_id[6];
-    char fee_type[2];
-    uint32_t submit_limit_100ms;//100ms内最多执行多少条submit
-    uint32_t submit_count;//计数
-    long start_submit_time;
-    zend_object std;
-} socket_coro;
 
 static PHP_METHOD(swoole_cmpp_coro, __construct);
 static PHP_METHOD(swoole_cmpp_coro, __destruct);
@@ -131,7 +108,7 @@ static PHP_METHOD(swoole_cmpp_coro, close);
 static const zend_function_entry swoole_cmpp_coro_methods[] = {
     PHP_ME(swoole_cmpp_coro, __construct, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, __destruct, NULL, ZEND_ACC_PUBLIC)
-            PHP_ME(swoole_cmpp_coro, close, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(swoole_cmpp_coro, close, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, dologin, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, recvOnePack, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_cmpp_coro, submit, NULL, ZEND_ACC_PUBLIC)
@@ -172,15 +149,12 @@ php_swoole_cmpp_coro_fetch_object(zend_object *obj) {
     return (socket_coro *) ((char *) obj - swoole_cmpp_coro_handlers.offset);
 }
 
-static sw_inline uint32_t
-cmpp_get_sequence_id(socket_coro *obj) {
-    if (obj->sequence_id >= obj->sequence_end)
-    {
-        obj->sequence_id = obj->sequence_start;
-    }
-    ++obj->sequence_id;
-    return obj->sequence_id;
+static sw_inline void
+swoole_cmpp_coro_sync_properties(zval *zobject, socket_coro *sock) {
+    zend_update_property_long(swoole_cmpp_coro_ce, zobject, ZEND_STRL("errCode"), sock->socket->errCode);
+    zend_update_property_string(swoole_cmpp_coro_ce, zobject, ZEND_STRL("errMsg"), sock->socket->errMsg);
 }
+
 
 static void
 php_swoole_cmpp_coro_free_object(zend_object *object) {
@@ -192,6 +166,16 @@ php_swoole_cmpp_coro_free_object(zend_object *object) {
         sock->socket = nullptr;
     }
     zend_object_std_dtor(&sock->std);
+}
+
+static sw_inline uint32_t
+cmpp_get_sequence_id(socket_coro *obj) {
+    if (obj->sequence_id >= obj->sequence_end)
+    {
+        obj->sequence_id = obj->sequence_start;
+    }
+    ++obj->sequence_id;
+    return obj->sequence_id;
 }
 
 static zend_object*
@@ -230,11 +214,6 @@ php_swoole_cmpp_coro_minit(int module_number) {
 
 }
 
-static sw_inline void
-swoole_cmpp_coro_sync_properties(zval *zobject, socket_coro *sock) {
-    zend_update_property_long(swoole_cmpp_coro_ce, zobject, ZEND_STRL("errCode"), sock->socket->errCode);
-    zend_update_property_string(swoole_cmpp_coro_ce, zobject, ZEND_STRL("errMsg"), sock->socket->errMsg);
-}
 
 static void sw_inline
 php_swoole_init_socket(zval *zobject, socket_coro *sock) {
@@ -371,7 +350,15 @@ PHP_METHOD(swoole_cmpp_coro, __construct) {
         ERROR_AND_RETURN("submit_per_sec must be set");
     }
 
-
+    if (php_swoole_array_get_value(vht, "protocal", ztmp))
+    {
+        zend_string *tmp = zval_get_string(ztmp);
+        if (strcmp("cmpp3", tmp->val) == 0)
+        {
+            sock->protocal = PROTOCAL_CMPP3;
+        }
+        zend_string_release(tmp);
+    }
 }
 
 static
@@ -435,6 +422,33 @@ cmpp2_recv_one_pack(socket_coro *sock, uint32_t *out) {
     return start;
 }
 
+
+
+template <typename T>
+
+inline void cmpp_login_template(T & resp_data, socket_coro* sock,zval *return_value,zval* object)
+{
+//     cmpp3_connect_resp resp_data = {0};
+       size_t bytes = sock->socket->recv_all(&resp_data, sizeof (resp_data));
+
+        swoole_cmpp_coro_sync_properties(object, sock);
+        if (UNEXPECTED(bytes != sizeof (resp_data)))
+        {
+            if (sock->socket->close())
+            {
+                delete sock->socket;
+                sock->socket = nullptr;
+            }
+            RETURN_FALSE;
+        }
+
+        zend_update_property_long(swoole_cmpp_coro_ce, object, ZEND_STRL("status"), CONN_NICE);
+        array_init(return_value);
+        add_assoc_stringl(return_value, "AuthenticatorISMG", (char *) resp_data.AuthenticatorISMG, sizeof (resp_data.AuthenticatorISMG));
+        add_assoc_long(return_value, "Status", ntohl(resp_data.Status));
+        add_assoc_long(return_value, "Version", resp_data.Version);
+}
+
 static
 PHP_METHOD(swoole_cmpp_coro, dologin) {
     char *host;
@@ -444,7 +458,7 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
     size_t l_spId;
     char *secret;
     size_t l_secret;
-    double timeout = 1;
+    double timeout = 10;
     ssize_t bytes = 0;
 
     ZEND_PARSE_PARAMETERS_START(4, 5)
@@ -465,7 +479,7 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
     }
 
     zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), CONNECTING);
-    Socket::timeout_setter ts(sock->socket, timeout, SW_TIMEOUT_CONNECT);
+    Socket::timeout_setter ts(sock->socket, (timeout / 3), SW_TIMEOUT_ALL);
     if (!sock->socket->connect(std::string(host, l_host), port))
     {
         swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
@@ -500,7 +514,15 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
     cmpp_md5(conn_req.AuthenticatorSource, auth.c, auth.len);
 
     memcpy(conn_req.Source_Addr, spId, sizeof (conn_req.Source_Addr));
-    conn_req.Version = 32; //写死32?
+    if (sock->protocal == PROTOCAL_CMPP3)
+    {
+        conn_req.Version = 48; //00110000
+    }
+    else
+    {
+        conn_req.Version = 32; //写死32?
+    }
+
     uint32_t timestamp = (uint32_t) atoi(date_str->val);
     conn_req.Timestamp = htonl(timestamp);
 
@@ -547,39 +569,65 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
         RETURN_FALSE;
     }
 
-    cmpp2_connect_resp resp_data = {0};
-    bytes = sock->socket->recv_all(&resp_data, sizeof (resp_data));
-    swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
-    if (UNEXPECTED(bytes != sizeof (resp_data)))
+    if (sock->protocal == PROTOCAL_CMPP3)
     {
-        if (sock->socket->close())
-        {
-            delete sock->socket;
-            sock->socket = nullptr;
-        }
-        RETURN_FALSE;
+        cmpp3_connect_resp resp_data = {0};
+        cmpp_login_template(resp_data,sock,return_value,ZEND_THIS);
     }
-
-    zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), CONN_NICE);
-
-    //定时发心跳
-    //    if (resp_data.Status == 0)
-    //    {
-    //        sock->timer = swoole_timer_add((long) (sock->active_test_interval * 1000), 1, cmpp2_keepalive_timer, Z_OBJ_P(ZEND_THIS));
-    //        if (!sock->timer)
-    //        {
-    //            zend_throw_exception_ex(
-    //                    NULL, errno,
-    //                    "%s: %s [%d]", "add active test timer error", strerror(errno), errno
-    //                    );
-    //        }
-    //    }
-
-    array_init(return_value);
-    add_assoc_stringl(return_value, "AuthenticatorISMG", (char *) resp_data.AuthenticatorISMG, sizeof (resp_data.AuthenticatorISMG));
-    add_assoc_long(return_value, "Status", resp_data.Status);
-    add_assoc_long(return_value, "Version", resp_data.Version);
+    else
+    {
+        cmpp2_connect_resp resp_data = {0};
+        cmpp_login_template(resp_data,sock,return_value,ZEND_THIS);
+    }
 }
+
+
+//template <typename T>
+//
+//static T const& make_cmpp2_delivery(T* , zval *return_value, cmpp2_head *resp_head)
+//{
+//    
+//    add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
+//    add_assoc_long(return_value, "Command", CMPP2_DELIVER);
+//    cmpp2_delivery_req *delivery_req = (cmpp2_delivery_req*) ((char*) resp_head + sizeof (cmpp2_head));
+//    format_msg_id(return_value, delivery_req->Msg_Id);
+//    add_assoc_string(return_value, "Dest_Id", (char*) delivery_req->Dest_Id);
+//    add_assoc_string(return_value, "Service_Id", (char*) delivery_req->Service_Id);
+//    add_assoc_long(return_value, "Msg_Fmt", delivery_req->Msg_Fmt);
+//    add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
+//    add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
+//
+//    //需要push到send的channel的部分
+//    cmpp2_delivery_resp del_resp;
+//
+//    uint32_t Msg_Length = delivery_req->Msg_Length;
+//
+//    if (delivery_req->Registered_Delivery == 0)
+//    {
+//        del_resp.Msg_Id = delivery_req->Msg_Id;
+//        add_assoc_stringl(return_value, "Msg_Content", (char*) delivery_req->Msg_Content, Msg_Length);
+//    } else
+//    {
+//        zval content;
+//        array_init(&content);
+//        cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
+//        del_resp.Msg_Id = delivery_content->Msg_Id;
+//        //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
+//        format_msg_id(&content, delivery_content->Msg_Id);
+//        add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
+//        add_assoc_stringl(&content, "Submit_time", (char*) delivery_content->Submit_time, sizeof (delivery_content->Submit_time));
+//        add_assoc_stringl(&content, "Done_time", (char*) delivery_content->Done_time, sizeof (delivery_content->Done_time));
+//        add_assoc_string(&content, "Dest_terminal_Id", (char*) delivery_content->Dest_terminal_Id);
+//        add_assoc_long(&content, "SMSC_sequence", ntohl(delivery_content->SMSC_sequence));
+//
+//        add_assoc_zval(return_value, "Msg_Content", &content);
+//    }
+//    
+//    del_resp.Result = 0;
+//    return del_resp;
+//}
+
+
 
 static
 PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
@@ -664,45 +712,20 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
             {//收到delivery投递
                 array_init(return_value);
                 sock->active_test_count = 0;
-                add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
-                add_assoc_long(return_value, "Command", CMPP2_DELIVER);
-                cmpp2_delivery_req *delivery_req = (cmpp2_delivery_req*) ((char*) buf + sizeof (cmpp2_head));
-                format_msg_id(return_value, delivery_req->Msg_Id);
-                add_assoc_string(return_value, "Dest_Id", (char*) delivery_req->Dest_Id);
-                add_assoc_string(return_value, "Service_Id", (char*) delivery_req->Service_Id);
-                add_assoc_long(return_value, "Msg_Fmt", delivery_req->Msg_Fmt);
-                add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
-                add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
-
-                //需要push到send的channel的部分
-                cmpp2_delivery_resp del_resp;
-
-                uint32_t Msg_Length = delivery_req->Msg_Length;
-
-                if (delivery_req->Registered_Delivery == 0)
+                char *send_data = NULL;
+                if (sock->protocal == PROTOCAL_CMPP3)
                 {
-                    del_resp.Msg_Id = delivery_req->Msg_Id;
-                    add_assoc_stringl(return_value, "Msg_Content", (char*) delivery_req->Msg_Content, Msg_Length);
+                    cmpp3_delivery_resp del_resp = {0};
+                    make_cmpp3_delivery(return_value, resp_head);
+                    send_data = cmpp2_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 }
                 else
                 {
-                    zval content;
-                    array_init(&content);
-                    cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
-                    del_resp.Msg_Id = delivery_content->Msg_Id;
-                    //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
-                    format_msg_id(&content, delivery_content->Msg_Id);
-                    add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
-                    add_assoc_stringl(&content, "Submit_time", (char*) delivery_content->Submit_time, sizeof (delivery_content->Submit_time));
-                    add_assoc_stringl(&content, "Done_time", (char*) delivery_content->Done_time, sizeof (delivery_content->Done_time));
-                    add_assoc_string(&content, "Dest_terminal_Id", (char*) delivery_content->Dest_terminal_Id);
-                    add_assoc_long(&content, "SMSC_sequence", ntohl(delivery_content->SMSC_sequence));
-
-                    add_assoc_zval(return_value, "Msg_Content", &content);
+                    cmpp2_delivery_resp del_resp = {0};
+                    make_cmpp2_delivery(return_value, resp_head);
+                    send_data = cmpp2_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 }
 
-                del_resp.Result = 0;
-                char *send_data = cmpp2_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
                 efree(send_data);
                 efree(buf);
@@ -780,101 +803,17 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
         sock->submit_count = 0;
     }
 
-
-    //构造submit req
-    cmpp2_submit_req submit_req = {0};
-    submit_req.Msg_Id = 0;
-    submit_req.Pk_total = pk_total;
-    submit_req.Pk_number = pk_index;
-    submit_req.Registered_Delivery = 1;
-    submit_req.Msg_level = 0;
-    memcpy(submit_req.Service_Id, sock->service_id, sizeof (sock->service_id));
-    submit_req.Fee_UserType = 0;
-    //    submit_req.Fee_terminal_Id
-    submit_req.TP_pId = 0;
-    if (udhi == -1)
-    {
-        submit_req.TP_udhi = 0;
-    }
-    else
-    {
-        submit_req.TP_udhi = 1;
-    }
-
-    submit_req.Msg_Fmt = 8; //utf8
-    memcpy(submit_req.Msg_src, sock->sp_id, sizeof (sock->sp_id));
-    memcpy(submit_req.FeeType, sock->fee_type, sizeof (sock->fee_type));
-    //    submit_req.FeeCode;
-    //    submit_req.ValId_Time;
-    //    submit_req.At_Time;
-    memcpy(submit_req.Src_Id, sock->src_id_prefix, strlen(sock->src_id_prefix));
-    if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
-    {
-        e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
-    }
-    memcpy(submit_req.Src_Id + strlen(sock->src_id_prefix), ext, e_length);
-
-    submit_req.DestUsr_tl = 1;
-    //手机号
-    memcpy(submit_req.Dest_terminal_Id, mobile, m_length);
-    if (udhi == -1)
-    {
-        submit_req.Msg_Length = c_length;
-    }
-    else
-    {//Msg_Length包含udhi头长度
-        submit_req.Msg_Length = c_length + sizeof (udhi_head);
-    }
-
-    //    submit_req.Msg_Content = content;
-    //    submit_req.Msg_Content = estrdup(content);
-    //    submit_req.Reserve;
-
-
-    //构造完整req
-    cmpp2_head head;
-    uint32_t send_len;
-    head.Command_Id = htonl(CMPP2_SUBMIT);
     uint32_t sequence_id = cmpp_get_sequence_id(sock);
-    head.Sequence_Id = htonl(sequence_id);
-    if (udhi == -1)
+    uint32_t send_len;
+    char *start = NULL;
+    if (sock->protocal == PROTOCAL_CMPP3)
     {
-        send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length;
+        start = make_cmpp3_submit(sock, sequence_id, pk_total, pk_index, udhi, ext, content, mobile, &send_len);
     }
     else
     {
-        send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length + sizeof (udhi_head);
+        start = make_cmpp2_submit(sock, sequence_id, pk_total, pk_index, udhi, ext, content, mobile, &send_len);
     }
-
-    head.Total_Length = htonl(send_len);
-    char *p, *start;
-    p = start = (char*) emalloc(send_len);
-    memcpy(p, &head, sizeof (cmpp2_head));
-    p += sizeof (cmpp2_head);
-    memcpy(p, &submit_req, offsetof(cmpp2_submit_req, Msg_Content));
-    p += offsetof(cmpp2_submit_req, Msg_Content);
-
-    if (udhi == -1)
-    {
-        memcpy(p, content, c_length);
-        p += c_length;
-    }
-    else
-    {
-        udhi_head udhi_struct;
-        udhi_struct.v = 5; //??
-        udhi_struct.v1 = 0; //??
-        udhi_struct.v2 = 3; //??
-        udhi_struct.udhi_id = (uchar) udhi;
-        udhi_struct.total = (uchar) pk_total;
-        udhi_struct.pos = (uchar) pk_index;
-        memcpy(p, &udhi_struct, sizeof (udhi_head));
-        p += sizeof (udhi_head);
-        memcpy(p, content, c_length);
-        p += c_length;
-    }
-
-    memcpy(p, submit_req.Reserve, sizeof (submit_req.Reserve));
 
     array_init(return_value);
     add_assoc_stringl(return_value, "packdata", start, send_len);

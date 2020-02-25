@@ -4,6 +4,7 @@
 
 static char* cmpp_library_source_cmpp2 =
     "\n"
+    "\n"
     "namespace Swoole\\Coroutine;\n"
     "\n"
     "class Cmpp2\n"
@@ -76,7 +77,7 @@ static char* cmpp_library_source_cmpp2 =
     "        }\n"
     "    }\n"
     "\n"
-    "    private function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = -1, int $i = -1)\n"
+    "    private function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1)\n"
     "    {\n"
     "        again:\n"
     "        $ret = $this->cmpp->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);\n"
@@ -224,7 +225,16 @@ static char* cmpp_library_source_cmpp2 =
     "\n"
     "}\n"
     "\n"
-    "class_alias(\"Swoole\\\\Coroutine\\\\Cmpp2\", \"Co\\\\Cmpp2\", true);\n";
+    "class Cmpp3 extends Cmpp2\n"
+    "{\n"
+    "    public function __construct($set){\n"
+    "        $set['protocal'] = 'cmpp3';\n"
+    "        parent::__construct($set);\n"
+    "    }\n"
+    "}\n"
+    "\n"
+    "class_alias(\"Swoole\\\\Coroutine\\\\Cmpp2\", \"Co\\\\Cmpp2\", true);\n"
+    "class_alias(\"Swoole\\\\Coroutine\\\\Cmpp3\", \"Co\\\\Cmpp3\", true);\n";
 
 void php_cmpp_load_library();
 

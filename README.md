@@ -18,6 +18,7 @@
 
         \Co\run(function() {
 
+        //$o = new \Co\Cmpp3(
         $o = new \Co\Cmpp2(
             [
         'sequence_start' => 100000,

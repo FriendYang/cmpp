@@ -1,4 +1,5 @@
 <?php
+
 namespace Swoole\Coroutine;
 
 class Cmpp2
@@ -71,7 +72,7 @@ class Cmpp2
         }
     }
 
-    private function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = -1, int $i = -1)
+    private function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1)
     {
         again:
         $ret = $this->cmpp->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);
@@ -219,4 +220,17 @@ class Cmpp2
 
 }
 
+class Cmpp3 extends Cmpp2
+{
+    public function __construct($set){
+        $set['protocal'] = 'cmpp3';
+        parent::__construct($set);
+    }
+}
+
 class_alias("Swoole\\Coroutine\\Cmpp2", "Co\\Cmpp2", true);
+class_alias("Swoole\\Coroutine\\Cmpp3", "Co\\Cmpp3", true);
+
+
+
+
