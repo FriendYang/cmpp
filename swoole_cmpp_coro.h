@@ -107,7 +107,7 @@ typedef struct _CMPP2HEAD
     uint32_t Command_Id;
     uint32_t Sequence_Id;
 
-} cmpp2_head;
+} cmpp_head;
 
 typedef struct _CMPP2ACTIVE_RESP
 {
@@ -230,7 +230,8 @@ typedef struct _CMPP3SUBMIT_REQ
     uchar Dest_terminal_type;
     uchar Msg_Length;
     uchar* Msg_Content; //**
-    uchar LinkID[20];
+//    uchar LinkID[20];
+    uchar Reserve[20];//hack for union name with template function
 
 } cmpp3_submit_req;
 
@@ -256,7 +257,7 @@ typedef struct _CMPP3DELIVER_MSG_CONTENT
     uchar Stat[7];
     uchar Submit_time[10];
     uchar Done_time[10];
-    uchar Dest_terminal_Id[21];
+    uchar Dest_terminal_Id[32];
     uint32_t SMSC_sequence;
 } cmpp3_delivery_msg_content;
 
@@ -292,30 +293,21 @@ static zend_always_inline void cmpp_md5(unsigned char *digest, const char *src, 
     //    make_digest_ex(des, digest, 16);
 }
 
-static zend_always_inline cmpp2_head cmpp2_make_head(uint32_t cmd, uint32_t sequence_Id, uint32_t body_len)
+
+static zend_always_inline char* cmpp_make_req(uint32_t cmd, uint32_t sequence_Id, uint32_t body_len, void *body, uint32_t *out)
 {
 
-    cmpp2_head head;
-    head.Command_Id = cmd;
-    head.Sequence_Id = sequence_Id;
-    head.Total_Length = sizeof (cmpp2_head) + body_len;
-    return head;
-}
-
-static zend_always_inline char* cmpp2_make_req(uint32_t cmd, uint32_t sequence_Id, uint32_t body_len, void *body, uint32_t *out)
-{
-
-    cmpp2_head head;
+    cmpp_head head;
     head.Command_Id = htonl(cmd);
     head.Sequence_Id = htonl(sequence_Id);
-    *out = sizeof (cmpp2_head) + body_len;
+    *out = sizeof (cmpp_head) + body_len;
     head.Total_Length = htonl(*out);
 
     char *ret = (char*) emalloc(head.Total_Length);
-    memcpy(ret, &head, sizeof (cmpp2_head));
+    memcpy(ret, &head, sizeof (cmpp_head));
     if (body)
     {
-        memcpy(ret + sizeof (cmpp2_head), body, body_len);
+        memcpy(ret + sizeof (cmpp_head), body, body_len);
     }
     return ret;
 }
@@ -341,296 +333,108 @@ static zend_always_inline void format_msg_id(zval *ret_value, ulong msg_id)
     add_assoc_string(ret_value, "Msg_Id", tmp);
 }
 
-static char* make_cmpp2_submit(socket_coro* sock, uint32_t sequence_id, zend_long pk_total, zend_long pk_index, zend_long udhi, char *ext, char *content, char *mobile, uint32_t* out_len)
-{
 
-    size_t m_length = strlen(mobile);
-    size_t e_length = strlen(ext);
-    size_t c_length = strlen(content);
-
-    //构造submit req
-    cmpp2_submit_req submit_req = {0};
-    submit_req.Msg_Id = 0;
-    submit_req.Pk_total = pk_total;
-    submit_req.Pk_number = pk_index;
-    submit_req.Registered_Delivery = 1;
-    submit_req.Msg_level = 0;
-    memcpy(submit_req.Service_Id, sock->service_id, sizeof (sock->service_id));
-    submit_req.Fee_UserType = 0;
-    //    submit_req.Fee_terminal_Id
-    submit_req.TP_pId = 0;
-    if (udhi == -1)
-    {
-        submit_req.TP_udhi = 0;
-    } else
-    {
-        submit_req.TP_udhi = 1;
-    }
-
-    submit_req.Msg_Fmt = 8; //utf8
-    memcpy(submit_req.Msg_src, sock->sp_id, sizeof (sock->sp_id));
-    memcpy(submit_req.FeeType, sock->fee_type, sizeof (sock->fee_type));
-    //    submit_req.FeeCode;
-    //    submit_req.ValId_Time;
-    //    submit_req.At_Time;
-    memcpy(submit_req.Src_Id, sock->src_id_prefix, strlen(sock->src_id_prefix));
-    if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
-    {
-        e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
-    }
-    memcpy(submit_req.Src_Id + strlen(sock->src_id_prefix), ext, e_length);
-
-    submit_req.DestUsr_tl = 1;
-    //手机号
-    memcpy(submit_req.Dest_terminal_Id, mobile, m_length);
-    if (udhi == -1)
-    {
-        submit_req.Msg_Length = c_length;
-    } else
-    {//Msg_Length包含udhi头长度
-        submit_req.Msg_Length = c_length + sizeof (udhi_head);
-    }
-
-    //    submit_req.Msg_Content = content;
-    //    submit_req.Msg_Content = estrdup(content);
-    //    submit_req.Reserve;
-
-
-    //构造完整req
-    cmpp2_head head;
-    uint32_t send_len;
-    head.Command_Id = htonl(CMPP2_SUBMIT);
-    head.Sequence_Id = htonl(sequence_id);
-    if (udhi == -1)
-    {
-        send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length;
-    } else
-    {
-        send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length + sizeof (udhi_head);
-    }
-
-    *out_len = send_len;
-    head.Total_Length = htonl(send_len);
-    char *p, *start;
-    p = start = (char*) emalloc(send_len);
-    memcpy(p, &head, sizeof (cmpp2_head));
-    p += sizeof (cmpp2_head);
-    memcpy(p, &submit_req, offsetof(cmpp2_submit_req, Msg_Content));
-    p += offsetof(cmpp2_submit_req, Msg_Content);
-
-    if (udhi == -1)
-    {
-        memcpy(p, content, c_length);
-        p += c_length;
-    } else
-    {
-        udhi_head udhi_struct;
-        udhi_struct.v = 5; //??
-        udhi_struct.v1 = 0; //??
-        udhi_struct.v2 = 3; //??
-        udhi_struct.udhi_id = (uchar) udhi;
-        udhi_struct.total = (uchar) pk_total;
-        udhi_struct.pos = (uchar) pk_index;
-        memcpy(p, &udhi_struct, sizeof (udhi_head));
-        p += sizeof (udhi_head);
-        memcpy(p, content, c_length);
-        p += c_length;
-    }
-
-    memcpy(p, submit_req.Reserve, sizeof (submit_req.Reserve));
-    return start;
-
-}
-
-static char* make_cmpp3_submit(socket_coro* sock, uint32_t sequence_id, zend_long pk_total, zend_long pk_index, zend_long udhi, char *ext, char *content, char *mobile, uint32_t* out_len)
-{
-
-    size_t m_length = strlen(mobile);
-    size_t e_length = strlen(ext);
-    size_t c_length = strlen(content);
-
-    //构造submit req
-    cmpp3_submit_req submit_req = {0};
-    submit_req.Msg_Id = 0;
-    submit_req.Pk_total = pk_total;
-    submit_req.Pk_number = pk_index;
-    submit_req.Registered_Delivery = 1;
-    submit_req.Msg_level = 0;
-    memcpy(submit_req.Service_Id, sock->service_id, sizeof (sock->service_id));
-    submit_req.Fee_UserType = 0;
-    //    submit_req.Fee_terminal_Id
-    submit_req.TP_pId = 0;
-    if (udhi == -1)
-    {
-        submit_req.TP_udhi = 0;
-    } else
-    {
-        submit_req.TP_udhi = 1;
-    }
-
-    submit_req.Msg_Fmt = 8; //utf8
-    memcpy(submit_req.Msg_src, sock->sp_id, sizeof (sock->sp_id));
-    memcpy(submit_req.FeeType, sock->fee_type, sizeof (sock->fee_type));
-    //    submit_req.FeeCode;
-    //    submit_req.ValId_Time;
-    //    submit_req.At_Time;
-    memcpy(submit_req.Src_Id, sock->src_id_prefix, strlen(sock->src_id_prefix));
-    if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
-    {
-        e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
-    }
-    memcpy(submit_req.Src_Id + strlen(sock->src_id_prefix), ext, e_length);
-
-    submit_req.DestUsr_tl = 1;
-    submit_req.Dest_terminal_type = 0;
-    //手机号
-    memcpy(submit_req.Dest_terminal_Id, mobile, m_length);
-    if (udhi == -1)
-    {
-        submit_req.Msg_Length = c_length;
-    } else
-    {//Msg_Length包含udhi头长度
-        submit_req.Msg_Length = c_length + sizeof (udhi_head);
-    }
-
-    //    submit_req.Msg_Content = content;
-    //    submit_req.Msg_Content = estrdup(content);
-    //    submit_req.Reserve;
-
-
-    //构造完整req
-    cmpp2_head head;
-    uint32_t send_len;
-    head.Command_Id = htonl(CMPP2_SUBMIT);
-    head.Sequence_Id = htonl(sequence_id);
-    if (udhi == -1)
-    {
-        send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length;
-    } else
-    {
-        send_len = sizeof (cmpp2_head) + sizeof (submit_req) - 1 + c_length + sizeof (udhi_head);
-    }
-
-    *out_len = send_len;
-    head.Total_Length = htonl(send_len);
-    char *p, *start;
-    p = start = (char*) emalloc(send_len);
-    memcpy(p, &head, sizeof (cmpp2_head));
-    p += sizeof (cmpp2_head);
-    memcpy(p, &submit_req, offsetof(cmpp3_submit_req, Msg_Content));
-    p += offsetof(cmpp3_submit_req, Msg_Content);
-
-    if (udhi == -1)
-    {
-        memcpy(p, content, c_length);
-        p += c_length;
-    } else
-    {
-        udhi_head udhi_struct;
-        udhi_struct.v = 5; //??
-        udhi_struct.v1 = 0; //??
-        udhi_struct.v2 = 3; //??
-        udhi_struct.udhi_id = (uchar) udhi;
-        udhi_struct.total = (uchar) pk_total;
-        udhi_struct.pos = (uchar) pk_index;
-        memcpy(p, &udhi_struct, sizeof (udhi_head));
-        p += sizeof (udhi_head);
-        memcpy(p, content, c_length);
-        p += c_length;
-    }
-
-    memcpy(p, submit_req.LinkID, sizeof (submit_req.LinkID));
-    return start;
-
-}
-
-static cmpp2_delivery_resp make_cmpp2_delivery(zval *return_value, cmpp2_head *resp_head)
-{
-    
-    add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
-    add_assoc_long(return_value, "Command", CMPP2_DELIVER);
-    cmpp2_delivery_req *delivery_req = (cmpp2_delivery_req*) ((char*) resp_head + sizeof (cmpp2_head));
-    format_msg_id(return_value, delivery_req->Msg_Id);
-    add_assoc_string(return_value, "Dest_Id", (char*) delivery_req->Dest_Id);
-    add_assoc_string(return_value, "Service_Id", (char*) delivery_req->Service_Id);
-    add_assoc_long(return_value, "Msg_Fmt", delivery_req->Msg_Fmt);
-    add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
-    add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
-
-    //需要push到send的channel的部分
-    cmpp2_delivery_resp del_resp;
-
-    uint32_t Msg_Length = delivery_req->Msg_Length;
-
-    if (delivery_req->Registered_Delivery == 0)
-    {
-        del_resp.Msg_Id = delivery_req->Msg_Id;
-        add_assoc_stringl(return_value, "Msg_Content", (char*) delivery_req->Msg_Content, Msg_Length);
-    } else
-    {
-        zval content;
-        array_init(&content);
-        cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
-        del_resp.Msg_Id = delivery_content->Msg_Id;
-        //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
-        format_msg_id(&content, delivery_content->Msg_Id);
-        add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
-        add_assoc_stringl(&content, "Submit_time", (char*) delivery_content->Submit_time, sizeof (delivery_content->Submit_time));
-        add_assoc_stringl(&content, "Done_time", (char*) delivery_content->Done_time, sizeof (delivery_content->Done_time));
-        add_assoc_string(&content, "Dest_terminal_Id", (char*) delivery_content->Dest_terminal_Id);
-        add_assoc_long(&content, "SMSC_sequence", ntohl(delivery_content->SMSC_sequence));
-
-        add_assoc_zval(return_value, "Msg_Content", &content);
-    }
-    
-    del_resp.Result = 0;
-    return del_resp;
-}
-
-
-static cmpp3_delivery_resp make_cmpp3_delivery(zval *return_value, cmpp2_head *resp_head)
-{
-    
-    add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
-    add_assoc_long(return_value, "Command", CMPP2_DELIVER);
-    cmpp3_delivery_req *delivery_req = (cmpp3_delivery_req*) ((char*) resp_head + sizeof (cmpp2_head));
-    format_msg_id(return_value, delivery_req->Msg_Id);
-    add_assoc_string(return_value, "Dest_Id", (char*) delivery_req->Dest_Id);
-    add_assoc_string(return_value, "Service_Id", (char*) delivery_req->Service_Id);
-    add_assoc_long(return_value, "Msg_Fmt", delivery_req->Msg_Fmt);
-    add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
-    add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
-
-    //需要push到send的channel的部分
-    cmpp3_delivery_resp del_resp;
-
-    uint32_t Msg_Length = delivery_req->Msg_Length;
-
-    if (delivery_req->Registered_Delivery == 0)
-    {
-        del_resp.Msg_Id = delivery_req->Msg_Id;
-        add_assoc_stringl(return_value, "Msg_Content", (char*) delivery_req->Msg_Content, Msg_Length);
-    } else
-    {
-        zval content;
-        array_init(&content);
-        cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
-        del_resp.Msg_Id = delivery_content->Msg_Id;
-        //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
-        format_msg_id(&content, delivery_content->Msg_Id);
-        add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
-        add_assoc_stringl(&content, "Submit_time", (char*) delivery_content->Submit_time, sizeof (delivery_content->Submit_time));
-        add_assoc_stringl(&content, "Done_time", (char*) delivery_content->Done_time, sizeof (delivery_content->Done_time));
-        add_assoc_string(&content, "Dest_terminal_Id", (char*) delivery_content->Dest_terminal_Id);
-        add_assoc_long(&content, "SMSC_sequence", ntohl(delivery_content->SMSC_sequence));
-
-        add_assoc_zval(return_value, "Msg_Content", &content);
-    }
-    
-    del_resp.Result = 0;
-    return del_resp;
-}
-
+//static char* make_cmpp3_submit(socket_coro* sock, uint32_t sequence_id, zend_long pk_total, zend_long pk_index, zend_long udhi, char *ext, char *content, char *mobile, uint32_t* out_len)
+//{
+//
+//    size_t m_length = strlen(mobile);
+//    size_t e_length = strlen(ext);
+//    size_t c_length = strlen(content);
+//
+//    //构造submit req
+//    cmpp3_submit_req submit_req = {0};
+//    submit_req.Msg_Id = 0;
+//    submit_req.Pk_total = pk_total;
+//    submit_req.Pk_number = pk_index;
+//    submit_req.Registered_Delivery = 1;
+//    submit_req.Msg_level = 0;
+//    memcpy(submit_req.Service_Id, sock->service_id, sizeof (sock->service_id));
+//    submit_req.Fee_UserType = 0;
+//    //    submit_req.Fee_terminal_Id
+//    submit_req.TP_pId = 0;
+//    if (udhi == -1)
+//    {
+//        submit_req.TP_udhi = 0;
+//    } else
+//    {
+//        submit_req.TP_udhi = 1;
+//    }
+//
+//    submit_req.Msg_Fmt = 8; //utf8
+//    memcpy(submit_req.Msg_src, sock->sp_id, sizeof (sock->sp_id));
+//    memcpy(submit_req.FeeType, sock->fee_type, sizeof (sock->fee_type));
+//    //    submit_req.FeeCode;
+//    //    submit_req.ValId_Time;
+//    //    submit_req.At_Time;
+//    memcpy(submit_req.Src_Id, sock->src_id_prefix, strlen(sock->src_id_prefix));
+//    if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
+//    {
+//        e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
+//    }
+//    memcpy(submit_req.Src_Id + strlen(sock->src_id_prefix), ext, e_length);
+//
+//    submit_req.DestUsr_tl = 1;
+//    submit_req.Dest_terminal_type = 0;
+//    //手机号
+//    memcpy(submit_req.Dest_terminal_Id, mobile, m_length);
+//    if (udhi == -1)
+//    {
+//        submit_req.Msg_Length = c_length;
+//    } else
+//    {//Msg_Length包含udhi头长度
+//        submit_req.Msg_Length = c_length + sizeof (udhi_head);
+//    }
+//
+//    //    submit_req.Msg_Content = content;
+//    //    submit_req.Msg_Content = estrdup(content);
+//    //    submit_req.Reserve;
+//
+//
+//    //构造完整req
+//    cmpp_head head;
+//    uint32_t send_len;
+//    head.Command_Id = htonl(CMPP2_SUBMIT);
+//    head.Sequence_Id = htonl(sequence_id);
+//    if (udhi == -1)
+//    {
+//        send_len = sizeof (cmpp_head) + sizeof (submit_req) - 1 + c_length;
+//    } else
+//    {
+//        send_len = sizeof (cmpp_head) + sizeof (submit_req) - 1 + c_length + sizeof (udhi_head);
+//    }
+//
+//    *out_len = send_len;
+//    head.Total_Length = htonl(send_len);
+//    char *p, *start;
+//    p = start = (char*) emalloc(send_len);
+//    memcpy(p, &head, sizeof (cmpp_head));
+//    p += sizeof (cmpp_head);
+//    memcpy(p, &submit_req, offsetof(cmpp3_submit_req, Msg_Content));
+//    p += offsetof(cmpp3_submit_req, Msg_Content);
+//
+//    if (udhi == -1)
+//    {
+//        memcpy(p, content, c_length);
+//        p += c_length;
+//    } else
+//    {
+//        udhi_head udhi_struct;
+//        udhi_struct.v = 5; //??
+//        udhi_struct.v1 = 0; //??
+//        udhi_struct.v2 = 3; //??
+//        udhi_struct.udhi_id = (uchar) udhi;
+//        udhi_struct.total = (uchar) pk_total;
+//        udhi_struct.pos = (uchar) pk_index;
+//        memcpy(p, &udhi_struct, sizeof (udhi_head));
+//        p += sizeof (udhi_head);
+//        memcpy(p, content, c_length);
+//        p += c_length;
+//    }
+//
+//    memcpy(p, submit_req.LinkID, sizeof (submit_req.LinkID));
+//    return start;
+//
+//}
 
 
 #endif

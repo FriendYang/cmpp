@@ -155,7 +155,6 @@ swoole_cmpp_coro_sync_properties(zval *zobject, socket_coro *sock) {
     zend_update_property_string(swoole_cmpp_coro_ce, zobject, ZEND_STRL("errMsg"), sock->socket->errMsg);
 }
 
-
 static void
 php_swoole_cmpp_coro_free_object(zend_object *object) {
     socket_coro *sock = (socket_coro *) php_swoole_cmpp_coro_fetch_object(object);
@@ -213,7 +212,6 @@ php_swoole_cmpp_coro_minit(int module_number) {
     SW_REGISTER_LONG_CONSTANT("CMPP2_DELIVER", CMPP2_DELIVER);
 
 }
-
 
 static void sw_inline
 php_swoole_init_socket(zval *zobject, socket_coro *sock) {
@@ -390,7 +388,7 @@ PHP_METHOD(swoole_cmpp_coro, close) {
 
 static void*
 cmpp2_recv_one_pack(socket_coro *sock, uint32_t *out) {
-    cmpp2_head resp_head;
+    cmpp_head resp_head;
     size_t bytes;
     char *p, *start;
     uint32_t Total_Length;
@@ -422,31 +420,200 @@ cmpp2_recv_one_pack(socket_coro *sock, uint32_t *out) {
     return start;
 }
 
+template <typename T>
 
+inline void
+cmpp_login_template(T & resp_data, socket_coro* sock, zval *return_value, zval* object) {
+    //     cmpp3_connect_resp resp_data = {0};
+    size_t bytes = sock->socket->recv_all(&resp_data, sizeof (resp_data));
+
+    swoole_cmpp_coro_sync_properties(object, sock);
+    if (UNEXPECTED(bytes != sizeof (resp_data)))
+    {
+        if (sock->socket->close())
+        {
+            delete sock->socket;
+            sock->socket = nullptr;
+        }
+        RETURN_FALSE;
+    }
+
+    zend_update_property_long(swoole_cmpp_coro_ce, object, ZEND_STRL("status"), CONN_NICE);
+    array_init(return_value);
+    add_assoc_stringl(return_value, "AuthenticatorISMG", (char *) resp_data.AuthenticatorISMG, sizeof (resp_data.AuthenticatorISMG));
+    add_assoc_long(return_value, "Status", ntohl(resp_data.Status));
+    add_assoc_long(return_value, "Version", resp_data.Version);
+}
+
+//template <typename T, typename T2>
+//
+//inline T2 &
+//make_delivery_template(T & delivery_req, uint32_t Sequence_Id, zval *return_value) {
 
 template <typename T>
 
-inline void cmpp_login_template(T & resp_data, socket_coro* sock,zval *return_value,zval* object)
-{
-//     cmpp3_connect_resp resp_data = {0};
-       size_t bytes = sock->socket->recv_all(&resp_data, sizeof (resp_data));
+inline ulong
+make_delivery_content_template(T & delivery_content, zval *return_value) {
+    zval content;
+    array_init(&content);
+    ulong delivery_resp_msgid = delivery_content->Msg_Id;
+    //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
+    format_msg_id(&content, delivery_content->Msg_Id);
+    add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
+    add_assoc_stringl(&content, "Submit_time", (char*) delivery_content->Submit_time, sizeof (delivery_content->Submit_time));
+    add_assoc_stringl(&content, "Done_time", (char*) delivery_content->Done_time, sizeof (delivery_content->Done_time));
+    add_assoc_string(&content, "Dest_terminal_Id", (char*) delivery_content->Dest_terminal_Id);
+    add_assoc_long(&content, "SMSC_sequence", ntohl(delivery_content->SMSC_sequence));
 
-        swoole_cmpp_coro_sync_properties(object, sock);
-        if (UNEXPECTED(bytes != sizeof (resp_data)))
+    add_assoc_zval(return_value, "Msg_Content", &content);
+
+    return delivery_resp_msgid;
+}
+
+template <typename T, typename T2>
+
+inline void
+make_delivery_template(T & delivery_req, T2 & del_resp, uint32_t Sequence_Id, zval *return_value, socket_coro* sock) {
+
+    add_assoc_long(return_value, "Sequence_Id", ntohl(Sequence_Id));
+    add_assoc_long(return_value, "Command", CMPP2_DELIVER);
+    format_msg_id(return_value, delivery_req->Msg_Id);
+    add_assoc_string(return_value, "Dest_Id", (char*) delivery_req->Dest_Id);
+    add_assoc_string(return_value, "Service_Id", (char*) delivery_req->Service_Id);
+    add_assoc_long(return_value, "Msg_Fmt", delivery_req->Msg_Fmt);
+    add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
+    add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
+
+    uint32_t Msg_Length = delivery_req->Msg_Length;
+
+    if (delivery_req->Registered_Delivery == 0)
+    {
+        del_resp.Msg_Id = delivery_req->Msg_Id;
+        add_assoc_stringl(return_value, "Msg_Content", (char*) delivery_req->Msg_Content, Msg_Length);
+    }
+    else
+    {
+        if (sock->protocal == PROTOCAL_CMPP3)
         {
-            if (sock->socket->close())
-            {
-                delete sock->socket;
-                sock->socket = nullptr;
-            }
-            RETURN_FALSE;
+            cmpp3_delivery_msg_content *delivery_content = (cmpp3_delivery_msg_content*) (delivery_req->Msg_Content);
+            del_resp.Msg_Id = make_delivery_content_template(delivery_content, return_value);
+        }
+        else
+        {
+            cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
+            del_resp.Msg_Id = make_delivery_content_template(delivery_content, return_value);
         }
 
-        zend_update_property_long(swoole_cmpp_coro_ce, object, ZEND_STRL("status"), CONN_NICE);
-        array_init(return_value);
-        add_assoc_stringl(return_value, "AuthenticatorISMG", (char *) resp_data.AuthenticatorISMG, sizeof (resp_data.AuthenticatorISMG));
-        add_assoc_long(return_value, "Status", ntohl(resp_data.Status));
-        add_assoc_long(return_value, "Version", resp_data.Version);
+    }
+
+    del_resp.Result = 0;
+}
+
+template <typename T>
+
+static char*
+make_submit_template(T &submit_req, uint32_t content_offset, socket_coro* sock, uint32_t sequence_id, zend_long pk_total, zend_long pk_index, zend_long udhi, char *ext, char *content, char *mobile, uint32_t* out_len) {
+
+    size_t m_length = strlen(mobile);
+    size_t e_length = strlen(ext);
+    size_t c_length = strlen(content);
+
+    //构造submit req
+    submit_req.Msg_Id = 0;
+    submit_req.Pk_total = pk_total;
+    submit_req.Pk_number = pk_index;
+    submit_req.Registered_Delivery = 1;
+    submit_req.Msg_level = 0;
+    memcpy(submit_req.Service_Id, sock->service_id, sizeof (sock->service_id));
+    submit_req.Fee_UserType = 0;
+    //    submit_req.Fee_terminal_Id
+    submit_req.TP_pId = 0;
+    if (udhi == -1)
+    {
+        submit_req.TP_udhi = 0;
+    }
+    else
+    {
+        submit_req.TP_udhi = 1;
+    }
+
+    submit_req.Msg_Fmt = 8; //utf8
+    memcpy(submit_req.Msg_src, sock->sp_id, sizeof (sock->sp_id));
+    memcpy(submit_req.FeeType, sock->fee_type, sizeof (sock->fee_type));
+    //    submit_req.FeeCode;
+    //    submit_req.ValId_Time;
+    //    submit_req.At_Time;
+    memcpy(submit_req.Src_Id, sock->src_id_prefix, strlen(sock->src_id_prefix));
+    if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
+    {
+        e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
+    }
+    memcpy(submit_req.Src_Id + strlen(sock->src_id_prefix), ext, e_length);
+
+    submit_req.DestUsr_tl = 1;
+    //手机号
+    memcpy(submit_req.Dest_terminal_Id, mobile, m_length);
+    if (udhi == -1)
+    {
+        submit_req.Msg_Length = c_length;
+    }
+    else
+    {//Msg_Length包含udhi头长度
+        submit_req.Msg_Length = c_length + sizeof (udhi_head);
+    }
+
+    //    submit_req.Msg_Content = content;
+    //    submit_req.Msg_Content = estrdup(content);
+    //    submit_req.Reserve;
+
+
+    //构造完整req
+    cmpp_head head;
+    uint32_t send_len;
+    head.Command_Id = htonl(CMPP2_SUBMIT);
+    head.Sequence_Id = htonl(sequence_id);
+    if (udhi == -1)
+    {
+        send_len = sizeof (cmpp_head) + sizeof (submit_req) - 1 + c_length;
+    }
+    else
+    {
+        send_len = sizeof (cmpp_head) + sizeof (submit_req) - 1 + c_length + sizeof (udhi_head);
+    }
+
+    *out_len = send_len;
+    head.Total_Length = htonl(send_len);
+    char *p, *start;
+    p = start = (char*) ecalloc(1, send_len);
+    memcpy(p, &head, sizeof (cmpp_head));
+    p += sizeof (cmpp_head);
+    memcpy(p, &submit_req, content_offset);
+    p += content_offset;
+
+    if (udhi == -1)
+    {
+        memcpy(p, content, c_length);
+        p += c_length;
+    }
+    else
+    {
+        udhi_head udhi_struct;
+        udhi_struct.v = 5; //??
+        udhi_struct.v1 = 0; //??
+        udhi_struct.v2 = 3; //??
+        udhi_struct.udhi_id = (uchar) udhi;
+        udhi_struct.total = (uchar) pk_total;
+        udhi_struct.pos = (uchar) pk_index;
+        memcpy(p, &udhi_struct, sizeof (udhi_head));
+        p += sizeof (udhi_head);
+        memcpy(p, content, c_length);
+        p += c_length;
+    }
+
+    memcpy(p, submit_req.Reserve, sizeof (submit_req.Reserve));
+
+    return start;
+
 }
 
 static
@@ -527,7 +694,7 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
     conn_req.Timestamp = htonl(timestamp);
 
     uint32_t send_len;
-    char *send_data = cmpp2_make_req(CMPP2_CONNECT, cmpp_get_sequence_id(sock), sizeof (conn_req), &conn_req, &send_len);
+    char *send_data = cmpp_make_req(CMPP2_CONNECT, cmpp_get_sequence_id(sock), sizeof (conn_req), &conn_req, &send_len);
     bytes = sock->socket->send_all(send_data, send_len);
     swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
     efree(send_data);
@@ -545,7 +712,7 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
     zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("status"), LOGINING);
 
     //接受login回执
-    cmpp2_head resp_head;
+    cmpp_head resp_head;
     bytes = sock->socket->recv_all(&resp_head, sizeof (resp_head));
     swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
     if (UNEXPECTED(bytes != sizeof (resp_head)))
@@ -572,62 +739,14 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
     if (sock->protocal == PROTOCAL_CMPP3)
     {
         cmpp3_connect_resp resp_data = {0};
-        cmpp_login_template(resp_data,sock,return_value,ZEND_THIS);
+        cmpp_login_template(resp_data, sock, return_value, ZEND_THIS);
     }
     else
     {
         cmpp2_connect_resp resp_data = {0};
-        cmpp_login_template(resp_data,sock,return_value,ZEND_THIS);
+        cmpp_login_template(resp_data, sock, return_value, ZEND_THIS);
     }
 }
-
-
-//template <typename T>
-//
-//static T const& make_cmpp2_delivery(T* , zval *return_value, cmpp2_head *resp_head)
-//{
-//    
-//    add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
-//    add_assoc_long(return_value, "Command", CMPP2_DELIVER);
-//    cmpp2_delivery_req *delivery_req = (cmpp2_delivery_req*) ((char*) resp_head + sizeof (cmpp2_head));
-//    format_msg_id(return_value, delivery_req->Msg_Id);
-//    add_assoc_string(return_value, "Dest_Id", (char*) delivery_req->Dest_Id);
-//    add_assoc_string(return_value, "Service_Id", (char*) delivery_req->Service_Id);
-//    add_assoc_long(return_value, "Msg_Fmt", delivery_req->Msg_Fmt);
-//    add_assoc_string(return_value, "Src_terminal_Id", (char*) delivery_req->Src_terminal_Id);
-//    add_assoc_long(return_value, "Registered_Delivery", delivery_req->Registered_Delivery);
-//
-//    //需要push到send的channel的部分
-//    cmpp2_delivery_resp del_resp;
-//
-//    uint32_t Msg_Length = delivery_req->Msg_Length;
-//
-//    if (delivery_req->Registered_Delivery == 0)
-//    {
-//        del_resp.Msg_Id = delivery_req->Msg_Id;
-//        add_assoc_stringl(return_value, "Msg_Content", (char*) delivery_req->Msg_Content, Msg_Length);
-//    } else
-//    {
-//        zval content;
-//        array_init(&content);
-//        cmpp2_delivery_msg_content *delivery_content = (cmpp2_delivery_msg_content*) (delivery_req->Msg_Content);
-//        del_resp.Msg_Id = delivery_content->Msg_Id;
-//        //                    add_assoc_long(&content, "Msg_Id", ntohl(delivery_content->Msg_Id));
-//        format_msg_id(&content, delivery_content->Msg_Id);
-//        add_assoc_stringl(&content, "Stat", (char*) delivery_content->Stat, sizeof (delivery_content->Stat));
-//        add_assoc_stringl(&content, "Submit_time", (char*) delivery_content->Submit_time, sizeof (delivery_content->Submit_time));
-//        add_assoc_stringl(&content, "Done_time", (char*) delivery_content->Done_time, sizeof (delivery_content->Done_time));
-//        add_assoc_string(&content, "Dest_terminal_Id", (char*) delivery_content->Dest_terminal_Id);
-//        add_assoc_long(&content, "SMSC_sequence", ntohl(delivery_content->SMSC_sequence));
-//
-//        add_assoc_zval(return_value, "Msg_Content", &content);
-//    }
-//    
-//    del_resp.Result = 0;
-//    return del_resp;
-//}
-
-
 
 static
 PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
@@ -654,7 +773,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
 
     while (buf)
     {
-        cmpp2_head *resp_head = (cmpp2_head*) buf;
+        cmpp_head *resp_head = (cmpp_head*) buf;
         Command_Id = ntohl(resp_head->Command_Id);
         switch (Command_Id)
         {
@@ -670,7 +789,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
                 efree(buf);
                 sock->active_test_count = 0;
                 cmpp2_active_resp active_resp = {0};
-                char *send_data = cmpp2_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), sizeof (active_resp), &active_resp, &out_len);
+                char *send_data = cmpp_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), sizeof (active_resp), &active_resp, &out_len);
                 array_init(return_value);
                 add_assoc_long(return_value, "Command", CMPP2_ACTIVE_TEST_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -680,7 +799,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
             case CMPP2_TERMINATE:
             {//收到断开连接，需要push到send的channel
                 efree(buf);
-                char *send_data = cmpp2_make_req(CMPP2_TERMINATE_RESP, ntohl(resp_head->Sequence_Id), 0, NULL, &out_len);
+                char *send_data = cmpp_make_req(CMPP2_TERMINATE_RESP, ntohl(resp_head->Sequence_Id), 0, NULL, &out_len);
                 array_init(return_value);
                 add_assoc_long(return_value, "Command", CMPP2_TERMINATE_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -701,7 +820,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
                 sock->active_test_count = 0;
                 add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->Sequence_Id));
                 add_assoc_long(return_value, "Command", CMPP2_SUBMIT_RESP);
-                cmpp2_submit_resp *submit_resp = (cmpp2_submit_resp*) ((char*) buf + sizeof (cmpp2_head));
+                cmpp2_submit_resp *submit_resp = (cmpp2_submit_resp*) ((char*) buf + sizeof (cmpp_head));
                 //                add_assoc_long(return_value, "Msg_Id", ntohll(submit_resp->Msg_Id));
                 format_msg_id(return_value, submit_resp->Msg_Id);
                 add_assoc_long(return_value, "Result", submit_resp->Result);
@@ -715,15 +834,18 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
                 char *send_data = NULL;
                 if (sock->protocal == PROTOCAL_CMPP3)
                 {
+                    cmpp3_delivery_req *delivery_req = (cmpp3_delivery_req*) ((char*) resp_head + sizeof (cmpp_head));
                     cmpp3_delivery_resp del_resp = {0};
-                    make_cmpp3_delivery(return_value, resp_head);
-                    send_data = cmpp2_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
+                    make_delivery_template(delivery_req, del_resp, resp_head->Sequence_Id, return_value, sock);
+                    send_data = cmpp_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 }
                 else
                 {
+                    cmpp2_delivery_req *delivery_req = (cmpp2_delivery_req*) ((char*) resp_head + sizeof (cmpp_head));
+                    //                    cmpp2_delivery_resp del_resp = make_delivery_template<cmpp2_delivery_resp>(delivery_req, resp_head->Sequence_Id, return_value);//返回值模板类型需手动指定
                     cmpp2_delivery_resp del_resp = {0};
-                    make_cmpp2_delivery(return_value, resp_head);
-                    send_data = cmpp2_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
+                    make_delivery_template(delivery_req, del_resp, resp_head->Sequence_Id, return_value, sock);
+                    send_data = cmpp_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 }
 
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -808,11 +930,13 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
     char *start = NULL;
     if (sock->protocal == PROTOCAL_CMPP3)
     {
-        start = make_cmpp3_submit(sock, sequence_id, pk_total, pk_index, udhi, ext, content, mobile, &send_len);
+        cmpp3_submit_req submit_req = {0};
+        start = make_submit_template(submit_req, offsetof(cmpp3_submit_req, Msg_Content), sock, sequence_id, pk_total, pk_index, udhi, ext, content, mobile, &send_len);
     }
     else
     {
-        start = make_cmpp2_submit(sock, sequence_id, pk_total, pk_index, udhi, ext, content, mobile, &send_len);
+        cmpp2_submit_req submit_req = {0};
+        start = make_submit_template(submit_req, offsetof(cmpp2_submit_req, Msg_Content), sock, sequence_id, pk_total, pk_index, udhi, ext, content, mobile, &send_len);
     }
 
     array_init(return_value);
@@ -844,7 +968,7 @@ PHP_METHOD(swoole_cmpp_coro, activeTest) {
 
     cmpp_get_sequence_id(sock);
     uint32_t send_len;
-    char *send_data = cmpp2_make_req(CMPP2_ACTIVE_TEST, sock->sequence_id, 0, NULL, &send_len);
+    char *send_data = cmpp_make_req(CMPP2_ACTIVE_TEST, sock->sequence_id, 0, NULL, &send_len);
     RETVAL_STRINGL(send_data, send_len);
     efree(send_data);
 
@@ -887,7 +1011,7 @@ PHP_METHOD(swoole_cmpp_coro, logout) {
 
     cmpp_get_sequence_id(sock);
     uint32_t send_len;
-    char *send_data = cmpp2_make_req(CMPP2_TERMINATE, sock->sequence_id, 0, NULL, &send_len);
+    char *send_data = cmpp_make_req(CMPP2_TERMINATE, sock->sequence_id, 0, NULL, &send_len);
     RETVAL_STRINGL(send_data, send_len);
 
     //    Socket::timeout_setter ts(sock->socket, -1, SW_TIMEOUT_WRITE);
