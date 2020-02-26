@@ -510,13 +510,12 @@ make_delivery_template(T & delivery_req, T2 & del_resp, uint32_t Sequence_Id, zv
 }
 
 template <typename T>
-
+//c_length二进制不安全 不能strlen
 static char*
-make_submit_template(T &submit_req, uint32_t content_offset, socket_coro* sock, uint32_t sequence_id, zend_long pk_total, zend_long pk_index, zend_long udhi, char *ext, char *content, char *mobile, uint32_t* out_len) {
+make_submit_template(T &submit_req, uint32_t content_offset, socket_coro* sock, uint32_t sequence_id, zend_long pk_total, zend_long pk_index, zend_long udhi, char *ext, char *content, size_t c_length, char *mobile, uint32_t* out_len) {
 
     size_t m_length = strlen(mobile);
     size_t e_length = strlen(ext);
-    size_t c_length = strlen(content);
 
     //构造submit req
     submit_req.Msg_Id = 0;
@@ -931,12 +930,12 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
     if (sock->protocal == PROTOCAL_CMPP3)
     {
         cmpp3_submit_req submit_req = {0};
-        start = make_submit_template(submit_req, offsetof(cmpp3_submit_req, Msg_Content), sock, sequence_id, pk_total, pk_index, udhi, ext, content, mobile, &send_len);
+        start = make_submit_template(submit_req, offsetof(cmpp3_submit_req, Msg_Content), sock, sequence_id, pk_total, pk_index, udhi, ext, content, c_length, mobile, &send_len);
     }
     else
     {
         cmpp2_submit_req submit_req = {0};
-        start = make_submit_template(submit_req, offsetof(cmpp2_submit_req, Msg_Content), sock, sequence_id, pk_total, pk_index, udhi, ext, content, mobile, &send_len);
+        start = make_submit_template(submit_req, offsetof(cmpp2_submit_req, Msg_Content), sock, sequence_id, pk_total, pk_index, udhi, ext, content, c_length, mobile, &send_len);
     }
 
     array_init(return_value);
