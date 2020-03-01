@@ -18,7 +18,6 @@
 
 #include "php_swoole_cxx.h"
 #include <string>
-#include <php/ext/swoole/include/coroutine_socket.h>
 #include "ext/standard/php_smart_string.h"
 #include "Zend/zend_API.h"
 #include "php_cmpp_library.h"
