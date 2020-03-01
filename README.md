@@ -1,3 +1,7 @@
+### 简介
+ PHP的三网合一短信网关核心框架，基于Swoole4协程实现高并发，支持(cmpp2/smpp3/sgip) 短信协议解析，支持长短信合并和拆分。   
+ qq联系：393323503
+
 ### install
 
  1. Make sure you have installed the latest version of swoole (swoole version >= 4.4)
@@ -12,7 +16,7 @@
      ```
      extension=swoole_cmpp.so
      ```
-### demo 
+### Cmpp2/Cmpp3 Demo 
 
  ```php
 
@@ -134,19 +138,19 @@
                                   int(1)
                                   Msg_Content有可能是字符串 根据Registered_Delivery字段决定
                                   ["Msg_Content"]=>
-                                  array(6) {
-                                  ["Msg_Id"]=>
-                                  int(694057508)
-                                  ["Stat"]=>
-                                  string(7) "DELIVRD"
-                                  ["Submit_time"]=>
-                                  string(20) "20021823392002182339"
-                                  ["Done_time"]=>
-                                  string(10) "2002182339"
-                                  ["Dest_terminal_Id"]=>
-                                  string(0) ""
-                                  ["SMSC_sequence"]=>
-                                  int(100002)
+                                            array(6) {
+                                            ["Msg_Id"]=>
+                                            int(694057508)
+                                            ["Stat"]=>
+                                            string(7) "DELIVRD"
+                                            ["Submit_time"]=>
+                                            string(20) "20021823392002182339"
+                                            ["Done_time"]=>
+                                            string(10) "2002182339"
+                                            ["Dest_terminal_Id"]=>
+                                            string(0) ""
+                                            ["SMSC_sequence"]=>
+                                            int(100002)
                                   }
                                   }
                                  */
@@ -162,14 +166,7 @@
             });
 
             //接收指令的协程 如关闭通道
-        //    go(function() use ($o) {
-        ////         $client = new Co\Client("127.0.0.1", 9501);
-        ////         $client->recv();
-        //        //确保'接收协程'里面的数据都处理完了才允许关闭通道 否则co sleep下。
-        //        if ($GLOBALS['tasking_num'] == 0) {
-        //            $o->logout();
-        //        }
-        //    });
+           //            $o->logout();
         });
  ```
 
