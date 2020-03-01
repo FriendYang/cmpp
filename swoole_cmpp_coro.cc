@@ -29,7 +29,8 @@ using namespace coroutine;
 
 PHP_MINIT_FUNCTION(swoole_cmpp);
 PHP_MINFO_FUNCTION(swoole_cmpp);
-void swoole_cmpp_init(int module_number);
+void
+swoole_cmpp_init(int module_number);
 
 /* {{{ swoole_cmpp_deps
  */
@@ -42,31 +43,29 @@ static const zend_module_dep swoole_cmpp_deps[] = {
 
 static zend_op_array *(*old_compile_string)(zval *source_string, char *filename);
 
-zend_op_array *cmpp_compile_string(zval *source_string, char *filename)
-{
+zend_op_array *
+cmpp_compile_string(zval *source_string, char *filename) {
     zend_op_array *opa = old_compile_string(source_string, filename);
     opa->type = ZEND_USER_FUNCTION;
     return opa;
 };
 
-int cmpp_eval(std::string code, std::string filename)
-{
+int
+cmpp_eval(std::string code, std::string filename) {
     static zend_bool init = 0;
-    if (!init) 
+    if (!init)
     {
         init = 1;
         old_compile_string = zend_compile_string;
     }
-    
+
     zend_compile_string = cmpp_compile_string;
     int ret = (zend_eval_stringl((char*) code.c_str(), code.length(), nullptr, (char *) filename.c_str()) == SUCCESS);
     zend_compile_string = old_compile_string;
     return ret;
 };
 
-
-PHP_RINIT_FUNCTION(swoole_cmpp)
-{
+PHP_RINIT_FUNCTION(swoole_cmpp) {
     //for test
     cmpp_eval(cmpp_library_source_cmpp2, "@cmpp-src/library/cmpp2.php");
     return SUCCESS;
@@ -103,7 +102,8 @@ static PHP_METHOD(swoole_cmpp_coro, submit);
 static PHP_METHOD(swoole_cmpp_coro, activeTest);
 static PHP_METHOD(swoole_cmpp_coro, sendOnePack);
 static PHP_METHOD(swoole_cmpp_coro, logout);
-static PHP_METHOD(swoole_cmpp_coro, close);
+static
+PHP_METHOD(swoole_cmpp_coro, close);
 
 static const zend_function_entry swoole_cmpp_coro_methods[] = {
     PHP_ME(swoole_cmpp_coro, __construct, NULL, ZEND_ACC_PUBLIC)
@@ -118,44 +118,23 @@ static const zend_function_entry swoole_cmpp_coro_methods[] = {
     PHP_FE_END
 };
 
-#define swoole_get_socket_coro(_sock, _zobject) \
-        socket_coro* _sock = php_swoole_cmpp_coro_fetch_object(Z_OBJ_P(_zobject)); \
-        if (UNEXPECTED(!sock->socket)) \
-        { \
-            php_swoole_fatal_error(E_ERROR, "you must call Socket constructor first"); \
-        } \
-        if (UNEXPECTED(_sock->socket == nullptr)) { \
-            zend_update_property_long(swoole_cmpp_coro_ce, _zobject, ZEND_STRL("errCode"), EBADF); \
-            zend_update_property_string(swoole_cmpp_coro_ce, _zobject, ZEND_STRL("errMsg"), strerror(EBADF)); \
-            RETURN_FALSE; \
-        }
-
-#define ERROR_AND_RETURN(str)\
- zend_throw_exception_ex(\
-                    NULL, errno,\
-                    "%s: %s [%d]",str, strerror(errno), errno\
-                    );\
-            delete sock->socket;\
-            sock->socket = nullptr;\
-            RETURN_FALSE;
-
 #define SET_BROKEN\
     zend_update_property_long(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("errCode"), CONN_BROKEN);\
     zend_update_property_string(swoole_cmpp_coro_ce, ZEND_THIS, ZEND_STRL("errMsg"), BROKEN_MSG);\
     RETURN_FALSE;
 
-static sw_inline socket_coro*
+socket_coro*
 php_swoole_cmpp_coro_fetch_object(zend_object *obj) {
     return (socket_coro *) ((char *) obj - swoole_cmpp_coro_handlers.offset);
 }
 
-static sw_inline void
+void
 swoole_cmpp_coro_sync_properties(zval *zobject, socket_coro *sock) {
     zend_update_property_long(swoole_cmpp_coro_ce, zobject, ZEND_STRL("errCode"), sock->socket->errCode);
     zend_update_property_string(swoole_cmpp_coro_ce, zobject, ZEND_STRL("errMsg"), sock->socket->errMsg);
 }
 
-static void
+void
 php_swoole_cmpp_coro_free_object(zend_object *object) {
     socket_coro *sock = (socket_coro *) php_swoole_cmpp_coro_fetch_object(object);
     if (sock->socket && sock->socket != nullptr)
@@ -167,7 +146,7 @@ php_swoole_cmpp_coro_free_object(zend_object *object) {
     zend_object_std_dtor(&sock->std);
 }
 
-static sw_inline uint32_t
+uint32_t
 cmpp_get_sequence_id(socket_coro *obj) {
     if (obj->sequence_id >= obj->sequence_end)
     {
@@ -177,7 +156,7 @@ cmpp_get_sequence_id(socket_coro *obj) {
     return obj->sequence_id;
 }
 
-static zend_object*
+zend_object*
 php_swoole_cmpp_coro_create_object(zend_class_entry *ce) {
     socket_coro *sock = (socket_coro *) ecalloc(1, sizeof (socket_coro) + zend_object_properties_size(ce));
     zend_object_std_init(&sock->std, ce);
@@ -213,11 +192,6 @@ php_swoole_cmpp_coro_minit(int module_number) {
 
 }
 
-static void sw_inline
-php_swoole_init_socket(zval *zobject, socket_coro *sock) {
-    zend_update_property_long(swoole_cmpp_coro_ce, zobject, ZEND_STRL("fd"), sock->socket->get_fd());
-}
-
 static
 PHP_METHOD(swoole_cmpp_coro, __construct) {
     zval *zset;
@@ -238,7 +212,6 @@ PHP_METHOD(swoole_cmpp_coro, __construct) {
         {
             ERROR_AND_RETURN("new Socket failed");
         }
-        php_swoole_init_socket(ZEND_THIS, sock);
     }
 
     if (php_swoole_array_get_value(vht, "sequence_start", ztmp))
@@ -384,40 +357,6 @@ PHP_METHOD(swoole_cmpp_coro, close) {
         delete sock->socket;
         sock->socket = nullptr;
     }
-}
-
-static void*
-cmpp2_recv_one_pack(socket_coro *sock, uint32_t *out) {
-    cmpp_head resp_head;
-    size_t bytes;
-    char *p, *start;
-    uint32_t Total_Length;
-    //fatal_error
-    bytes = sock->socket->recv_all(&resp_head, sizeof (resp_head));
-    if (UNEXPECTED(bytes != sizeof (resp_head)))
-    {
-        return NULL;
-    }
-    *out = Total_Length = ntohl(resp_head.Total_Length);
-    p = start = (char*) emalloc(Total_Length);
-    if (!p)
-    {
-        return NULL;
-    }
-
-    memcpy(p, &resp_head, sizeof (resp_head));
-    p += sizeof (resp_head);
-
-    if (Total_Length>sizeof (resp_head))
-    {
-        bytes = sock->socket->recv_all(p, Total_Length - sizeof (resp_head));
-        if (UNEXPECTED(bytes != (Total_Length - sizeof (resp_head))))
-        {
-            efree(start);
-            return NULL;
-        }
-    }
-    return start;
 }
 
 template <typename T>
@@ -767,8 +706,9 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
         RETURN_FALSE;
     }
 
+    cmpp_head cmpp_resp;
     Socket::timeout_setter ts(sock->socket, timeout, SW_TIMEOUT_READ);
-    buf = cmpp2_recv_one_pack(sock, &out_len);
+    buf = cmpp_recv_one_pack(sock, &out_len, cmpp_resp);
 
     while (buf)
     {
@@ -780,7 +720,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
             {//收到心跳回执，不需要send
                 efree(buf);
                 sock->active_test_count = 0;
-                buf = cmpp2_recv_one_pack(sock, &out_len);
+                buf = cmpp_recv_one_pack(sock, &out_len, cmpp_resp);
                 continue;
             }
             case CMPP2_ACTIVE_TEST:
@@ -855,7 +795,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
             default:
                 efree(buf);
                 sock->active_test_count = 0;
-                buf = cmpp2_recv_one_pack(sock, &out_len);
+                buf = cmpp_recv_one_pack(sock, &out_len, cmpp_resp);
                 php_swoole_error(E_WARNING, "donnot support this command %d", Command_Id);
                 continue;
 
@@ -979,29 +919,7 @@ PHP_METHOD(swoole_cmpp_coro, activeTest) {
 static
 PHP_METHOD(swoole_cmpp_coro, sendOnePack) {
 
-    char *data;
-    size_t length;
-
-    ZEND_PARSE_PARAMETERS_START(1, 1)
-    Z_PARAM_STRING(data, length)
-    ZEND_PARSE_PARAMETERS_END_EX(RETURN_FALSE);
-
-    swoole_get_socket_coro(sock, ZEND_THIS);
-
-    Socket::timeout_setter ts(sock->socket, -1, SW_TIMEOUT_WRITE);
-    size_t bytes = sock->socket->send_all(data, length);
-    swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
-
-    if (bytes != length)
-    {
-        sock->is_broken = 1;
-    }
-    //    else
-    //    {
-    //        sock->active_test_count = 0;
-    //    }
-
-    RETURN_LONG(length);
+    cmpp_send_one_pack(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
 static
@@ -1043,6 +961,7 @@ PHP_MINIT_FUNCTION(swoole_cmpp) {
     }
 
     php_swoole_cmpp_coro_minit(module_number);
+    php_swoole_sgip_coro_minit(module_number);
 
     return SUCCESS;
 }

@@ -59,6 +59,19 @@ extern "C"
 #define CMPP2_ACTIVE_TEST_RESP   0x80000008 
 
 
+#define SGIP_CONNECT  0x1 
+#define SGIP_CONNECT_RESP   0x80000001 
+#define SGIP_UNBIND   0x2 
+#define SGIP_UNBIND_RESP   0x80000002 
+#define SGIP_SUBMIT   0x3 
+#define SGIP_SUBMIT_RESP   0x80000003 
+#define SGIP_DELIVER   0x4 
+#define SGIP_DELIVER_RESP   0x80000004 
+#define SGIP_REPORT   0x5
+#define SGIP_REPORT_RESP   0x80000005
+
+
+
 #define CONNECTING        0
 #define CONNECTED         1
 #define LOGINING          2
@@ -71,6 +84,24 @@ extern "C"
 
 #define PROTOCAL_CMPP2        0
 #define PROTOCAL_CMPP3        1
+
+
+#define ERROR_AND_RETURN(str)\
+ zend_throw_exception_ex(\
+                    NULL, errno,\
+                    "%s: %s [%d]",str, strerror(errno), errno\
+                    );\
+            delete sock->socket;\
+            sock->socket = nullptr;\
+            RETURN_FALSE;
+
+
+#define swoole_get_socket_coro(_sock, _zobject) \
+        socket_coro* _sock = php_swoole_cmpp_coro_fetch_object(Z_OBJ_P(_zobject)); \
+        if (UNEXPECTED(!sock->socket)) \
+        { \
+            php_swoole_fatal_error(E_ERROR, "you must call Socket constructor first"); \
+        } 
 
 typedef struct
 {
@@ -90,7 +121,7 @@ typedef struct
     char service_id[10];
     char src_id_prefix[20];
     char sp_id[6];
-    char fee_type[2];
+    uchar fee_type[2];
     uint32_t submit_limit_100ms; //100ms内最多执行多少条submit
     uint32_t submit_count; //计数
     long start_submit_time;
@@ -230,8 +261,8 @@ typedef struct _CMPP3SUBMIT_REQ
     uchar Dest_terminal_type;
     uchar Msg_Length;
     uchar* Msg_Content; //**
-//    uchar LinkID[20];
-    uchar Reserve[20];//hack for union name with template function
+    //    uchar LinkID[20];
+    uchar Reserve[20]; //hack for union name with template function
 
 } cmpp3_submit_req;
 
@@ -273,7 +304,6 @@ typedef struct _CMPP3SUBMIT_RESP
     uint32_t Result;
 } cmpp3_submit_resp;
 
-
 typedef struct _CMPP3CONNECT_RESP
 {
     uint32_t Status;
@@ -281,7 +311,104 @@ typedef struct _CMPP3CONNECT_RESP
     uchar Version;
 } cmpp3_connect_resp;
 
+
+
+
+//*****************************SGIP*******************************//
+
+typedef struct _SGIPHEAD
+{
+    uint32_t Total_Length;
+    uint32_t Command_Id;
+
+    union
+    {
+
+        struct
+        {
+            uint32_t Sequence_Id1;
+            uint32_t Sequence_Id2;
+            uint32_t Sequence_Id3;
+        } v;
+        uchar Sequence_Id_Char[12];
+    } Sequence_Id;
+} sgip_head;
+
+//sgip resp是通用格式
+typedef struct _SGIP_RESP
+{
+    uchar Result;
+    uchar Reserve[8];
+} sgip_resp;
+
+typedef struct _SGIPBIND
+{
+    uchar Login_Type;
+    uchar Login_Name[16];
+    uchar Login_Passowrd[16];
+    uchar Reserve[8];
+} sgip_bind;
+
+typedef struct _SGIPSUBMIT
+{
+    uchar SPNumber[21]; //相当于srcId
+    uchar ChargeNumber[21];
+    uchar UserCount;
+    uchar UserNumber[21]; //想当于Dest_terminal_Id
+    uchar CorpId[5];
+    uchar ServiceType[10];
+    uchar FeeType;
+    uchar FeeValue[6];
+    uchar GivenValue[6];
+    uchar AgentFlag;
+    uchar MorelatetoMTFlag;
+    uchar Priority;
+    uchar ExpireTime[16];
+    uchar ScheduleTime[16];
+    uchar ReportFlag;
+    uchar TP_pid;
+    uchar TP_udhi;
+    uchar MessageCoding;
+    uchar MessageType;
+    uint32_t MessageLength;
+    uchar MessageContent;
+    uchar Reserve[8];
+} sgip_submit;
+
+
+typedef struct _SGIPDELIVER
+{
+    uchar UserNumber[21];
+    uchar SPNumber[21];
+    uchar TP_pid;
+    uchar TP_udhi;
+    uchar MessageCoding;
+    uint32_t MessageLength;
+    char* MessageContent;
+    uchar Reserved[8];
+} sgip_delivery;
+
+typedef struct _SGIPREPORT
+{
+    uchar SubmitSequenceNumber[12];
+    uchar ReportType;
+    uchar UserNumber[21];
+    uchar State;
+    uchar ErrorCode;
+    uchar Reserved[8];
+} sgip_report;
+
+
 #pragma pack ()
+
+
+
+socket_coro* php_swoole_cmpp_coro_fetch_object(zend_object *obj);
+void swoole_cmpp_coro_sync_properties(zval *zobject, socket_coro *sock);
+void php_swoole_cmpp_coro_free_object(zend_object *object);
+uint32_t cmpp_get_sequence_id(socket_coro *obj);
+zend_object* php_swoole_cmpp_coro_create_object(zend_class_entry *ce);
+void php_swoole_sgip_coro_minit(int module_number);
 
 static zend_always_inline void cmpp_md5(unsigned char *digest, const char *src, size_t len)
 {
@@ -292,7 +419,6 @@ static zend_always_inline void cmpp_md5(unsigned char *digest, const char *src, 
     PHP_MD5Final(digest, &ctx);
     //    make_digest_ex(des, digest, 16);
 }
-
 
 static zend_always_inline char* cmpp_make_req(uint32_t cmd, uint32_t sequence_Id, uint32_t body_len, void *body, uint32_t *out)
 {
@@ -333,108 +459,66 @@ static zend_always_inline void format_msg_id(zval *ret_value, ulong msg_id)
     add_assoc_string(ret_value, "Msg_Id", tmp);
 }
 
+template <typename T>
+void*
+cmpp_recv_one_pack(socket_coro *sock, uint32_t *out, T &resp_head)
+{
+    size_t bytes;
+    char *p, *start;
+    uint32_t Total_Length;
+    //fatal_error
+    bytes = sock->socket->recv_all(&resp_head, sizeof (resp_head));
+    if (UNEXPECTED(bytes != sizeof (resp_head)))
+    {
+        return NULL;
+    }
+    *out = Total_Length = ntohl(resp_head.Total_Length);
+    p = start = (char*) emalloc(Total_Length);
+    if (!p)
+    {
+        return NULL;
+    }
 
-//static char* make_cmpp3_submit(socket_coro* sock, uint32_t sequence_id, zend_long pk_total, zend_long pk_index, zend_long udhi, char *ext, char *content, char *mobile, uint32_t* out_len)
-//{
-//
-//    size_t m_length = strlen(mobile);
-//    size_t e_length = strlen(ext);
-//    size_t c_length = strlen(content);
-//
-//    //构造submit req
-//    cmpp3_submit_req submit_req = {0};
-//    submit_req.Msg_Id = 0;
-//    submit_req.Pk_total = pk_total;
-//    submit_req.Pk_number = pk_index;
-//    submit_req.Registered_Delivery = 1;
-//    submit_req.Msg_level = 0;
-//    memcpy(submit_req.Service_Id, sock->service_id, sizeof (sock->service_id));
-//    submit_req.Fee_UserType = 0;
-//    //    submit_req.Fee_terminal_Id
-//    submit_req.TP_pId = 0;
-//    if (udhi == -1)
-//    {
-//        submit_req.TP_udhi = 0;
-//    } else
-//    {
-//        submit_req.TP_udhi = 1;
-//    }
-//
-//    submit_req.Msg_Fmt = 8; //utf8
-//    memcpy(submit_req.Msg_src, sock->sp_id, sizeof (sock->sp_id));
-//    memcpy(submit_req.FeeType, sock->fee_type, sizeof (sock->fee_type));
-//    //    submit_req.FeeCode;
-//    //    submit_req.ValId_Time;
-//    //    submit_req.At_Time;
-//    memcpy(submit_req.Src_Id, sock->src_id_prefix, strlen(sock->src_id_prefix));
-//    if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
-//    {
-//        e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
-//    }
-//    memcpy(submit_req.Src_Id + strlen(sock->src_id_prefix), ext, e_length);
-//
-//    submit_req.DestUsr_tl = 1;
-//    submit_req.Dest_terminal_type = 0;
-//    //手机号
-//    memcpy(submit_req.Dest_terminal_Id, mobile, m_length);
-//    if (udhi == -1)
-//    {
-//        submit_req.Msg_Length = c_length;
-//    } else
-//    {//Msg_Length包含udhi头长度
-//        submit_req.Msg_Length = c_length + sizeof (udhi_head);
-//    }
-//
-//    //    submit_req.Msg_Content = content;
-//    //    submit_req.Msg_Content = estrdup(content);
-//    //    submit_req.Reserve;
-//
-//
-//    //构造完整req
-//    cmpp_head head;
-//    uint32_t send_len;
-//    head.Command_Id = htonl(CMPP2_SUBMIT);
-//    head.Sequence_Id = htonl(sequence_id);
-//    if (udhi == -1)
-//    {
-//        send_len = sizeof (cmpp_head) + sizeof (submit_req) - 1 + c_length;
-//    } else
-//    {
-//        send_len = sizeof (cmpp_head) + sizeof (submit_req) - 1 + c_length + sizeof (udhi_head);
-//    }
-//
-//    *out_len = send_len;
-//    head.Total_Length = htonl(send_len);
-//    char *p, *start;
-//    p = start = (char*) emalloc(send_len);
-//    memcpy(p, &head, sizeof (cmpp_head));
-//    p += sizeof (cmpp_head);
-//    memcpy(p, &submit_req, offsetof(cmpp3_submit_req, Msg_Content));
-//    p += offsetof(cmpp3_submit_req, Msg_Content);
-//
-//    if (udhi == -1)
-//    {
-//        memcpy(p, content, c_length);
-//        p += c_length;
-//    } else
-//    {
-//        udhi_head udhi_struct;
-//        udhi_struct.v = 5; //??
-//        udhi_struct.v1 = 0; //??
-//        udhi_struct.v2 = 3; //??
-//        udhi_struct.udhi_id = (uchar) udhi;
-//        udhi_struct.total = (uchar) pk_total;
-//        udhi_struct.pos = (uchar) pk_index;
-//        memcpy(p, &udhi_struct, sizeof (udhi_head));
-//        p += sizeof (udhi_head);
-//        memcpy(p, content, c_length);
-//        p += c_length;
-//    }
-//
-//    memcpy(p, submit_req.LinkID, sizeof (submit_req.LinkID));
-//    return start;
-//
-//}
+    memcpy(p, &resp_head, sizeof (resp_head));
+    p += sizeof (resp_head);
 
+    if (Total_Length>sizeof (resp_head))
+    {
+        bytes = sock->socket->recv_all(p, Total_Length - sizeof (resp_head));
+        if (UNEXPECTED(bytes != (Total_Length - sizeof (resp_head))))
+        {
+            efree(start);
+            return NULL;
+        }
+    }
+    return start;
+}
+
+
+
+
+
+static zend_always_inline void cmpp_send_one_pack(INTERNAL_FUNCTION_PARAMETERS)
+{
+    char *data;
+    size_t length;
+
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_STRING(data, length)
+    ZEND_PARSE_PARAMETERS_END_EX(RETURN_FALSE);
+
+    swoole_get_socket_coro(sock, ZEND_THIS);
+
+    Socket::timeout_setter ts(sock->socket, -1, SW_TIMEOUT_WRITE);
+    size_t bytes = sock->socket->send_all(data, length);
+    swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
+
+    if (bytes != length)
+    {
+        sock->is_broken = 1;
+    }
+
+    RETURN_LONG(length);
+}
 
 #endif

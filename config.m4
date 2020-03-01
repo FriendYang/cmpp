@@ -69,7 +69,7 @@ if test "$PHP_swoole_cmpp" != "no"; then
 
     PHP_ADD_LIBRARY(pthread, 1, SWOOLE_CMPP_SHARED_LIBADD)
 
-    swoole_source_file="swoole_cmpp_coro.cc"
+    swoole_source_file="swoole_cmpp_coro.cc swoole_sgip_coro.cc"
 
     PHP_NEW_EXTENSION(swoole_cmpp, $swoole_source_file, $ext_shared,,, cxx)
 

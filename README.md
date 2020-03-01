@@ -172,6 +172,11 @@
         //    });
         });
  ```
+
+### SGIP
+
+参考`SgipClient.php`和`SgipServer.php`
+
  
 ### 鸣谢
 

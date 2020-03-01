@@ -2,139 +2,23 @@
 
 namespace Swoole\Coroutine;
 
-class Cmpp2
-{//cmpp容器类
+//短信接口基类
+abstract class CmppAbstract
+{
 
-    private $cmpp = NULL; //cmpp实例
-    private $setting = [];
-    private $sendChannel = NULL;
+    public $errCode = 0;
+    public $errMsg = "";
+    public $ext = NULL;
+    public $setting = [];
+    public $sendChannel = NULL;
 
-//    private $recvCid = -1;
-//    private $submitting = 0;
-//    private $recvWating = 0;
-//    private $inbatch = 0;
+    abstract function login($ip, $port, $uname, $pwd, float $timeout = -1);
 
-    public function __construct($set)
-    {
-        $this->setting = $set;
-    }
+    abstract function recv();
 
-    private function connBroken()
-    {//连接断开 销毁实例 结束协程
-        $this->cmpp->close();
-        $this->cmpp = NULL;
-    }
+    abstract function logout();
 
-    public function login($ip, $port, $uname, $pwd, float $timeout = -1)
-    {
-        if (is_null($this->cmpp)) {
-            $this->cmpp = new \Swoole\Coroutine\Cmpp($this->setting);
-            $ret = $this->cmpp->dologin($ip, $port, $uname, $pwd, $timeout);
-            if (is_array($ret) && $ret['Status'] == 0) {
-                $this->sendChannel = new \Swoole\Coroutine\Channel(3);
-                //心跳协程
-                \Swoole\Coroutine::create(function () {
-                    while (1) {
-                        \Swoole\Coroutine::sleep($this->setting['active_test_interval']);
-                        if (is_null($this->cmpp)) {
-                            break; //结束协程
-                        }
-                        $pingData = $this->cmpp->activeTest();
-                        if ($pingData === FALSE) {
-                            return $this->cmpp->close();
-                        }
-                        if ($pingData) {
-                            $this->sendChannel->push($pingData);
-                        }
-                    }
-                });
-                //专门的发送协程
-                \Swoole\Coroutine::create(function () {
-                    while (1) {
-                        $pack = $this->sendChannel->pop();
-                        if (is_null($this->cmpp)) {
-                            break; //结束协程
-                        }
-                        $this->cmpp->sendOnePack($pack);
-                    }
-                });
-                return $ret;
-            } else {
-                $this->errMsg = $this->cmpp->errMsg;
-                $this->errCode = $this->cmpp->errCode;
-                $this->cmpp = null;
-                return $ret;
-            }
-        } else {
-            $this->errMsg = "the connection is connected";
-            $this->errCode = CMPP_CONN_CONNECTED;
-            return FALSE;
-        }
-    }
-
-    private function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1)
-    {
-        again:
-        $ret = $this->cmpp->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);
-        if ($ret === FALSE) {
-            $this->syncErr();
-            $this->connBroken();
-            return FALSE;
-        }
-        if (is_double($ret)) {
-//            if ($this->inbatch) {//证明submitArr触发的realSubmit
-//                $this->submitting = 0;
-//                if ($this->recvWating) {
-//                    \Swoole\Coroutine::resume($this->recvCid);
-//                }
-//                \Swoole\Coroutine::sleep($ret);
-//                $this->submitting = 1;
-//            } else {
-            \Swoole\Coroutine::sleep($ret);
-//            }
-            goto again;
-        }
-
-        $cRet = $this->sendChannel->push($ret['packdata'], $timeout);
-        if ($cRet === FALSE) {
-            $this->errCode = $this->sendChannel->errCode;
-            return FALSE;
-        }
-        return $ret['sequence_id'];
-    }
-
-    /*
-     * array(
-     *   [0] => array(
-     *    'mobile'=>'1581142343',
-     *    'text'=>'测试短信',
-     *    'ext'=>'扩展码',
-     *    'udhi'=>'如果是长短信 这里需要填udhi的序列号',
-     *    )
-     * )
-     */
-    /*
-     * submit优先于recv里面逻辑
-     * 如果撞上了，recv yield，恢复方式有2种，1是submit超过限速sleep时候唤醒，2是submitArr函数结束。
-     */
-
-//    public function submitArr($arr, $timeout = -1)
-//    {
-//        $this->submitting = $this->inbatch = 1;
-//        $seqArr = [];
-//        foreach ($arr as $msg) {
-//            $tmp = $this->submit($msg['mobile'], $msg['text'], $msg['ext'], $timeout, $msg['udhi']);
-//            if ($tmp === false) {
-//                $tmp = [FALSE];
-//            }
-//            $seqArr = array_merge($tmp, $seqArr);
-//        }
-//        $this->submitting = $this->inbatch = 0;
-//        if ($this->recvWating) {
-//            \Swoole\Coroutine::resume($this->recvCid);
-//        }
-//        return $seqArr;
-//    }
+    abstract function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1);
 
     public function submit($mobile, $text, $ext, float $timeout = -1, int $udhi = -1)
     {
@@ -166,19 +50,105 @@ class Cmpp2
         return $seqArr;
     }
 
+    public function syncErr()
+    {
+        $this->errCode = $this->ext->errCode;
+        $this->errMsg = $this->ext->errMsg;
+    }
+
+}
+
+class Cmpp2 extends CmppAbstract
+{//cmpp容器类
+//    private $recvCid = -1;
+//    private $submitting = 0;
+//    private $recvWating = 0;
+//    private $inbatch = 0;
+
+    public function __construct($set)
+    {
+        $this->setting = $set;
+    }
+
+    private function connBroken()
+    {//连接断开 销毁实例 结束协程
+        $this->ext->close();
+        $this->ext = NULL;
+    }
+
+    public function login($ip, $port, $uname, $pwd, float $timeout = -1)
+    {
+        if (is_null($this->ext)) {
+            $this->ext = new \Swoole\Coroutine\Cmpp($this->setting);
+            $ret = $this->ext->dologin($ip, $port, $uname, $pwd, $timeout);
+            if (is_array($ret) && $ret['Status'] == 0) {
+                $this->sendChannel = new \Swoole\Coroutine\Channel(3);
+                //心跳协程
+                \Swoole\Coroutine::create(function () {
+                    while (1) {
+                        \Swoole\Coroutine::sleep($this->setting['active_test_interval']);
+                        if (is_null($this->ext)) {
+                            break; //结束协程
+                        }
+                        $pingData = $this->ext->activeTest();
+                        if ($pingData === FALSE) {
+                            return $this->ext->close();
+                        }
+                        if ($pingData) {
+                            $this->sendChannel->push($pingData);
+                        }
+                    }
+                });
+                //专门的发送协程
+                \Swoole\Coroutine::create(function () {
+                    while (1) {
+                        $pack = $this->sendChannel->pop();
+                        if (is_null($this->ext)) {
+                            break; //结束协程
+                        }
+                        $this->ext->sendOnePack($pack);
+                    }
+                });
+                return $ret;
+            } else {
+                $this->errMsg = $this->ext->errMsg;
+                $this->errCode = $this->ext->errCode;
+                $this->ext = null;
+                return $ret;
+            }
+        } else {
+            $this->errMsg = "the connection is connected";
+            $this->errCode = CMPP_CONN_CONNECTED;
+            return FALSE;
+        }
+    }
+
+    public function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1)
+    {
+        again:
+        $ret = $this->ext->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);
+        if ($ret === FALSE) {
+            $this->syncErr();
+            $this->connBroken();
+            return FALSE;
+        }
+        if (is_double($ret)) {
+            \Swoole\Coroutine::sleep($ret);
+            goto again;
+        }
+
+        $cRet = $this->sendChannel->push($ret['packdata'], $timeout);
+        if ($cRet === FALSE) {
+            $this->errCode = $this->sendChannel->errCode;
+            return FALSE;
+        }
+        return $ret['sequence_id'];
+    }
+
     public function recv(float $timeout = -1)
     {
-//        if ($this->recvCid == -1) {
-//            $this->recvCid = \Swoole\Coroutine::getCid();
-//        }
         again:
-
-//        if ($this->submitting === 1) {
-//            $this->recvWating = 1;
-//            \Swoole\Coroutine::suspend();
-//            $this->recvWating = 0;
-//        }
-        $ret = $this->cmpp->recvOnePack($timeout);
+        $ret = $this->ext->recvOnePack($timeout);
         if ($ret === false) {
             $this->syncErr();
             if ($this->errCode === CMPP_CONN_BROKEN) {
@@ -202,10 +172,103 @@ class Cmpp2
         }
     }
 
-    private function syncErr()
+    /*
+     * 发送term包 收到回复的term resp后 recv返回false 断开连接
+     */
+
+    public function logout()
     {
-        $this->errCode = $this->cmpp->errCode;
-        $this->errMsg = $this->cmpp->errMsg;
+        $packdata = $this->ext->logout();
+        $this->sendChannel->push($packdata);
+    }
+
+}
+
+class Cmpp3 extends Cmpp2
+{
+
+    public function __construct($set)
+    {
+        $set['protocal'] = 'cmpp3';
+        parent::__construct($set);
+    }
+
+}
+
+class SgipClient extends CmppAbstract
+{//sgip容器类
+
+    public function __construct($set)
+    {
+        $this->setting = $set;
+    }
+
+    public function login($ip, $port, $uname, $pwd, float $timeout = -1)
+    {
+        if (is_null($this->ext)) {
+            $this->ext = new \Swoole\Coroutine\Sgip($this->setting);
+            $ret = $this->ext->bind($ip, $port, $uname, $pwd, $timeout);
+            if (is_array($ret) && $ret['Result'] == 0) {
+                $this->sendChannel = new \Swoole\Coroutine\Channel(3);
+                //专门的发送协程
+                \Swoole\Coroutine::create(function () {
+                    while (1) {
+                        $pack = $this->sendChannel->pop();
+                        if (is_null($this->ext)) {
+                            break; //结束协程
+                        }
+                        $this->ext->sendOnePack($pack);
+                    }
+                });
+                return $ret;
+            } else {
+                $this->syncErr();
+                $this->ext = null;
+                return $ret;
+            }
+        } else {
+            $this->errMsg = "the connection is connected";
+            $this->errCode = CMPP_CONN_CONNECTED;
+            return FALSE;
+        }
+    }
+
+    public function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1)
+    {
+        $ret = $this->ext->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);
+        if ($ret === FALSE) {
+            $this->errCode = CMPP_CONN_BROKEN;
+            return FALSE;
+        }
+
+        $cRet = $this->sendChannel->push($ret['packdata'], $timeout);
+        if ($cRet === FALSE) {
+            $this->errCode = $this->sendChannel->errCode;
+            return FALSE;
+        }
+        return $ret['sequence_id'];
+    }
+
+    public function recv(float $timeout = -1)
+    {
+        again:
+        $ret = $this->ext->recvOnePack($timeout);
+        if ($ret === false) {
+            $this->syncErr();
+            if ($this->ext->errCode != SOCKET_ETIMEDOUT) {
+                $this->errCode = CMPP_CONN_BROKEN;
+            }
+            return FALSE;
+        }
+        switch ($ret['Command']) {
+            case SGIP_UNBIND_RESP://对端主动断开给回复的包
+                $this->sendChannel->push($ret["packdata"]);
+                goto again;
+            case SGIP_SUBMIT_RESP:
+                return $ret;
+            default :
+                throw new \Exception("error command " . $ret['Command']);
+        }
     }
 
     /*
@@ -214,23 +277,177 @@ class Cmpp2
 
     public function logout()
     {
-        $packdata = $this->cmpp->logout();
-        $this->sendChannel->push($packdata);
+         $this->sendChannel->push(\Swoole\Coroutine\Sgip::unbindPack());
     }
 
 }
 
-class Cmpp3 extends Cmpp2
+class SgipServer extends Server
 {
-    public function __construct($set){
-        $set['protocal'] = 'cmpp3';
-        parent::__construct($set);
+    /*
+     * array(
+     *    client_ips = ['a','b','c'],
+     * *    client_ips = '0.0.0.0'代表不限制
+     *    max_connection = 10,//每个ip最多多少个连接
+      'bind_timeout'=>5,//tcp连上后 多久不发bind包就close连接。
+     * )
+     */
+
+    public static $sgipSet = [];
+    public static $connLimit = [];
+
+    public function sgipSet($arr)
+    {
+        self::$sgipSet = $arr;
     }
+
+    public function start(): bool
+    {
+        if (!isset(self::$sgipSet['client_ips']) || !isset(self::$sgipSet['max_connection']) || !isset(self::$sgipSet['bind_timeout'])) {
+            throw new \Exception("sgip set error");
+        }
+        $this->running = true;
+        if ($this->fn == null) {
+            $this->errCode = SOCKET_EINVAL;
+            return false;
+        }
+        $socket = $this->socket;
+        $this->setting = array_merge($this->setting, [
+            'open_length_check' => 1,
+            'package_length_type' => 'N',
+            'package_length_offset' => 0, //第N个字节是包长度的值
+            'package_body_offset' => 0, //第几个字节开始计算长度
+            'package_max_length' => 2000000, //协议最大长度
+            'open_tcp_nodelay' => true //TCP底层合并传输,true表示关闭
+        ]);
+        if (!$socket->setProtocol($this->setting)) {
+            $this->errCode = SOCKET_EINVAL;
+            return false;
+        }
+
+        while ($this->running) {
+            /** @var $conn Socket */
+            $conn = $socket->accept();
+
+            //IP限制
+            $peer = $conn->getpeername();
+            $client_ips = self::$sgipSet['client_ips'];
+            if ($client_ips != "0.0.0.0") {
+                if (!in_array($peer['address'], self::$sgipSet['client_ips'])) {
+                    $conn->close();
+                    continue;
+                }
+            }
+
+            //连接数限制
+            @self::$connLimit[$peer['address']] ++;
+            if (self::$connLimit[$peer['address']] > self::$sgipSet['max_connection']) {
+                $conn->close();
+                self::$connLimit[$peer['address']] --;
+                continue;
+            }
+
+            if ($conn) {
+                if (\Swoole\Coroutine::create($this->fn, new SGIPConnection($conn)) < 0) {
+                    goto _wait;
+                }
+            } else {
+                if ($socket->errCode == SOCKET_EMFILE or $socket->errCode == SOCKET_ENFILE) {
+                    _wait:
+                    \Swoole\Coroutine::sleep(1);
+                    continue;
+                } elseif ($socket->errCode == SOCKET_ETIMEDOUT) {
+                    continue;
+                } elseif ($socket->errCode == SOCKET_ECANCELED) {
+                    break;
+                } else {
+                    trigger_error("accept failed, Error: {$socket->errMsg}[{$socket->errCode}]", E_USER_WARNING);
+                    break;
+                }
+            }
+        }
+
+        return true;
+    }
+
 }
 
+class SgipConnection extends Server\Connection
+{
+
+    public $sendChannel = null;
+    private $status = "START";
+    public $peerName = "";
+
+    public function recv(float $timeout = 0)
+    {
+        if (is_null($this->sendChannel)) {
+            $this->sendChannel = new \Swoole\Coroutine\Channel(3);
+            //专门的发送协程
+            \Swoole\Coroutine::create(function () {
+                while (1) {
+                    $pack = $this->sendChannel->pop();
+                    $ret = $this->socket->sendAll($pack, -1);
+                    if ($ret === false) {//链接出错
+                        return NULL;
+                    }
+                }
+            });
+        }
+        if ($this->status == "START") {
+            //bind_timeout
+            go(function() {
+                \Swoole\Coroutine::sleep(\Co\SgipServer::$sgipSet['bind_timeout']);
+                if ($this->status == "START") {
+                    $this->socket->close();
+                }
+            });
+        }
+        again:
+        $raw = $this->socket->recv($timeout);
+        if (empty($raw)) {
+            $peer = $this->socket->getpeername();
+            \Co\SgipServer::$connLimit[$peer['address']] --;
+            $this->socket->close();
+            return $raw;
+        }
+        $arr = \Swoole\Coroutine\Sgip::parseServerRecv($raw);
+        switch ($arr['Command']) {
+            case SGIP_CONNECT:
+                $this->status = "BIND";
+                $this->sendChannel->push($arr['packdata']); //回复resp
+                goto again;
+            case SGIP_UNBIND://继续接收，直到收到tcp的fin
+                $this->status = "UNBIND";
+                $this->sendChannel->push($arr['packdata']); //回复resp
+                goto again;
+            case SGIP_UNBIND_RESP:
+                $this->status = "UNBIND";
+                $this->socket->close();
+                goto again;
+            case SGIP_REPORT:
+                $this->sendChannel->push($arr['packdata']); //回复resp
+                unset($arr['packdata']);
+                return $arr;
+            case SGIP_DELIVER:
+                $this->sendChannel->push($arr['packdata']); //回复resp
+                unset($arr['packdata']);
+                return $arr;
+
+            default:
+                throw new \Exception("error command " . $arr['Command']);
+        }
+    }
+
+    public function logout()
+    {
+        $this->sendChannel->push(\Swoole\Coroutine\Sgip::unbindPack());
+    }
+
+}
+
+class_alias("Swoole\\Coroutine\\SgipClient", "Co\\SgipClient", true);
+class_alias("Swoole\\Coroutine\\SgipServer", "Co\\SgipServer", true);
+class_alias("Swoole\\Coroutine\\SgipConnection", "Co\\SgipConnection", true);
 class_alias("Swoole\\Coroutine\\Cmpp2", "Co\\Cmpp2", true);
 class_alias("Swoole\\Coroutine\\Cmpp3", "Co\\Cmpp3", true);
-
-
-
-
