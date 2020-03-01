@@ -277,7 +277,7 @@ class SgipClient extends CmppAbstract
 
     public function logout()
     {
-         $this->sendChannel->push(\Swoole\Coroutine\Sgip::unbindPack());
+        $this->sendChannel->push(\Swoole\Coroutine\Sgip::unbindPack());
     }
 
 }
@@ -368,6 +368,11 @@ class SgipServer extends Server
         }
 
         return true;
+    }
+
+    public function OnConnect(callable $fn)
+    {
+        $this->fn = $fn;
     }
 
 }

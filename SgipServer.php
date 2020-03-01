@@ -12,8 +12,8 @@ Co\run(function () {
                 'bind_timeout' => 5//tcp连接上之后 几s之后不发送bind就断开连接
             )
     );
-    //接收到新的连接请求   可以同时处理多个连接                                                                                                                  
-    $server->handle(function (Co\SgipConnection $conn) {
+    //接收到新的连接请求  每个连接进来自动开个协程处理                                                                                                            
+    $server->OnConnect(function (Co\SgipConnection $conn) {
         while (1) {
             $data = $conn->recv();
             if (empty($data)) {
