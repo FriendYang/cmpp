@@ -407,8 +407,8 @@ PHP_METHOD(swoole_sgip_coro, submit) {
     submit_req.FeeType = sock->fee_type[0];
     submit_req.MorelatetoMTFlag = 2; //引起MT消息的原因 (0点播引起的第一条MT消息 1MO点播引起的非第一条MT消息 2非MO点播引起的MT消息 3系统反馈引起的MT消息)
     submit_req.Priority = 9; //??
-    //    submit_req.ReportFlag = 1;
-    submit_req.ReportFlag = 2; //for test 用来测试delivery上行
+    submit_req.ReportFlag = 1;
+//    submit_req.ReportFlag = 2; //for test 用来测试delivery上行
     submit_req.MessageCoding = 8;
 
     submit_req.TP_pid = 0;
