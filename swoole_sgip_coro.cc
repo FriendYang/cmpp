@@ -268,7 +268,7 @@ PHP_METHOD(swoole_sgip_coro, bind) {
         php_swoole_error(E_WARNING, "Invalid sp id");
         RETURN_FALSE;
     }
-    
+
     memcpy(sock->sp_id, spId, l_spId);
 
     sgip_bind bind_req = {0};
@@ -407,7 +407,8 @@ PHP_METHOD(swoole_sgip_coro, submit) {
     submit_req.FeeType = sock->fee_type[0];
     submit_req.MorelatetoMTFlag = 2; //引起MT消息的原因 (0点播引起的第一条MT消息 1MO点播引起的非第一条MT消息 2非MO点播引起的MT消息 3系统反馈引起的MT消息)
     submit_req.Priority = 9; //??
-    submit_req.ReportFlag = 1;
+    //    submit_req.ReportFlag = 1;
+    submit_req.ReportFlag = 2; //for test 用来测试delivery上行
     submit_req.MessageCoding = 8;
 
     submit_req.TP_pid = 0;
@@ -636,8 +637,10 @@ PHP_METHOD(swoole_sgip_coro, parseServerRecv) {
             add_assoc_long(return_value, "TP_pid", delivery_req->TP_pid);
             add_assoc_long(return_value, "TP_udhi", delivery_req->TP_udhi);
             add_assoc_long(return_value, "MessageCoding", delivery_req->MessageCoding);
-            add_assoc_long(return_value, "MessageLength", ntohl(delivery_req->MessageLength));
-            add_assoc_stringl(return_value, "MessageContent", delivery_req->MessageContent, ntohl(delivery_req->MessageLength));
+            delivery_req->MessageLength = ntohl(delivery_req->MessageLength);
+            add_assoc_long(return_value, "MessageLength", delivery_req->MessageLength);
+            //!!MessageContent只是个占位符，因为MessageContent的指针值也是内容
+            add_assoc_stringl(return_value, "MessageContent", buf + sizeof (sgip_head) + offsetof(sgip_delivery, MessageContent), delivery_req->MessageLength);
             return;
         }
         case SGIP_REPORT:
