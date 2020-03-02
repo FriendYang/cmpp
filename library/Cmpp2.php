@@ -168,7 +168,8 @@ class Cmpp2 extends CmppAbstract
             case CMPP2_SUBMIT_RESP:
                 return $ret;
             default :
-                throw new \Exception("error command " . $ret['Command']);
+                return false;
+//                throw new \Exception("error command " . $ret['Command']);
         }
     }
 
@@ -267,7 +268,9 @@ class SgipClient extends CmppAbstract
             case SGIP_SUBMIT_RESP:
                 return $ret;
             default :
-                throw new \Exception("error command " . $ret['Command']);
+                $this->errCode = CMPP_CONN_BROKEN;
+                return FALSE;
+//                throw new \Exception("error command " . $ret['Command']);
         }
     }
 
@@ -350,6 +353,10 @@ class SgipServer extends Server
             if ($conn) {
                 //accept会产生新的socket，此处设置粘包选项
                 $conn->setProtocol($this->setting);
+                if (!$conn->setProtocol($this->setting)) {
+                    $this->errCode = SOCKET_EINVAL;
+                    return false;
+                }
                 if (\Swoole\Coroutine::create($this->fn, new SGIPConnection($conn)) < 0) {
                     goto _wait;
                 }
@@ -442,7 +449,8 @@ class SgipConnection extends Server\Connection
                 return $arr;
 
             default:
-                throw new \Exception("error command " . $arr['Command']);
+                return NULL;
+//                throw new \Exception("error command " . $arr['Command']);
         }
     }
 

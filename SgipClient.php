@@ -26,7 +26,7 @@
 //    发送短信协程
     go(function() use ($o) {
         $text = "测试短信：您的验证码为 4829344";
-        $i = 10;
+        $i = 2;
         $start = microtime(true) * 1000;
         while ($i--) {
             $req_arr = $o->submit("15811413647", $text, "0000", -1); //默认-1 永不超时

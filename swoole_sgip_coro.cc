@@ -268,7 +268,8 @@ PHP_METHOD(swoole_sgip_coro, bind) {
         php_swoole_error(E_WARNING, "Invalid sp id");
         RETURN_FALSE;
     }
-    //    memcpy(sock->sp_id, spId, l_spId);
+    
+    memcpy(sock->sp_id, spId, l_spId);
 
     sgip_bind bind_req = {0};
     bind_req.Login_Type = 1;
@@ -392,13 +393,23 @@ PHP_METHOD(swoole_sgip_coro, submit) {
     //构造submit req
     uint32_t sequence_id = cmpp_get_sequence_id(sock);
     sgip_submit submit_req = {0};
+    memcpy(submit_req.SPNumber, sock->src_id_prefix, strlen(sock->src_id_prefix));
+    if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
+    {
+        e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
+    }
+    memcpy(submit_req.SPNumber + strlen(sock->src_id_prefix), ext, e_length);
     submit_req.UserCount = 1;
+    //手机号
+    memcpy(submit_req.UserNumber, mobile, m_length);
+    memcpy(submit_req.CorpId, sock->sp_id, sizeof (sock->sp_id));
+    memcpy(submit_req.ServiceType, sock->service_id, sizeof (sock->service_id));
     submit_req.FeeType = sock->fee_type[0];
     submit_req.MorelatetoMTFlag = 2; //引起MT消息的原因 (0点播引起的第一条MT消息 1MO点播引起的非第一条MT消息 2非MO点播引起的MT消息 3系统反馈引起的MT消息)
     submit_req.Priority = 9; //??
     submit_req.ReportFlag = 1;
     submit_req.MessageCoding = 8;
-    memcpy(submit_req.ServiceType, sock->service_id, sizeof (sock->service_id));
+
     submit_req.TP_pid = 0;
     if (udhi == -1)
     {
@@ -408,17 +419,6 @@ PHP_METHOD(swoole_sgip_coro, submit) {
     {
         submit_req.TP_udhi = 1;
     }
-
-    memcpy(submit_req.CorpId, sock->sp_id, sizeof (sock->sp_id));
-    memcpy(submit_req.SPNumber, sock->src_id_prefix, strlen(sock->src_id_prefix));
-    if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
-    {
-        e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
-    }
-    memcpy(submit_req.SPNumber + strlen(sock->src_id_prefix), ext, e_length);
-
-    //手机号
-    memcpy(submit_req.UserNumber, mobile, m_length);
 
     if (udhi == -1)
     {
