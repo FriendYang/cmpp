@@ -682,7 +682,7 @@ PHP_METHOD(swoole_sgip_coro, parseServerRecv) {
 
         }
         default:
-            php_swoole_error(E_WARNING, "donnot support this command %d", Command_Id);
+//            php_swoole_error(E_WARNING, "donnot support this command %d", Command_Id);
             RETURN_FALSE;
     }
 }
