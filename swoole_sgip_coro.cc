@@ -637,6 +637,7 @@ PHP_METHOD(swoole_sgip_coro, parseServerRecv) {
             add_assoc_long(return_value, "TP_pid", delivery_req->TP_pid);
             add_assoc_long(return_value, "TP_udhi", delivery_req->TP_udhi);
             add_assoc_long(return_value, "MessageCoding", delivery_req->MessageCoding);
+            add_assoc_long(return_value, "ReportType", 1);
             delivery_req->MessageLength = ntohl(delivery_req->MessageLength);
             add_assoc_long(return_value, "MessageLength", delivery_req->MessageLength);
             //!!MessageContent只是个占位符，因为MessageContent的指针值也是内容
