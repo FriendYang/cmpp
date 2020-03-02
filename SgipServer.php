@@ -25,7 +25,7 @@ Co\run(function () {
             go(function() use ($data) {
                 switch ($data['Command']) {
                     case SGIP_REPORT:
-                        var_dump($data);
+                        var_dump($data);//这里会把sequence的12字节分成三部分，其中SubmitSequenceId3是submit时候生成的id。
                         break;
                     case SGIP_DELIVER:
                         var_dump($data);

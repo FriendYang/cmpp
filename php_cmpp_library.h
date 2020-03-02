@@ -353,6 +353,8 @@ static char* cmpp_library_source_cmpp2 =
     "            }\n"
     "\n"
     "            if ($conn) {\n"
+    "                //accept会产生新的socket，此处设置粘包选项\n"
+    "                $conn->setProtocol($this->setting);\n"
     "                if (\\Swoole\\Coroutine::create($this->fn, new SGIPConnection($conn)) < 0) {\n"
     "                    goto _wait;\n"
     "                }\n"

@@ -348,6 +348,8 @@ class SgipServer extends Server
             }
 
             if ($conn) {
+                //accept会产生新的socket，此处设置粘包选项
+                $conn->setProtocol($this->setting);
                 if (\Swoole\Coroutine::create($this->fn, new SGIPConnection($conn)) < 0) {
                     goto _wait;
                 }

@@ -26,7 +26,7 @@
 //    发送短信协程
     go(function() use ($o) {
         $text = "测试短信：您的验证码为 4829344";
-        $i = 1;
+        $i = 10;
         $start = microtime(true) * 1000;
         while ($i--) {
             $req_arr = $o->submit("15811413647", $text, "0000", -1); //默认-1 永不超时
@@ -73,7 +73,8 @@
             go(function() use ($data) {
                 $GLOBALS['tasking_num'] ++;
                 switch ($data['Command']) {
-                    case SGIP_SUBMIT_RESP://SGIP只会收到submit回执包
+                    //SGIP只会收到submit回执包，这里会把sequence的12字节分成三部分，其中Sequence_Id3是submit时候生成的id。
+                    case SGIP_SUBMIT_RESP:
                         var_dump($data);
                         break;
                     default:
