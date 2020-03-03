@@ -352,7 +352,6 @@ class SgipServer extends Server
 
             if ($conn) {
                 //accept会产生新的socket，此处设置粘包选项
-                $conn->setProtocol($this->setting);
                 if (!$conn->setProtocol($this->setting)) {
                     $this->errCode = SOCKET_EINVAL;
                     return false;
@@ -418,7 +417,7 @@ class SgipConnection extends Server\Connection
             });
         }
         again:
-        $raw = $this->socket->recv($timeout);
+        $raw = $this->socket->recvPacket($timeout);
         if (empty($raw)) {
             $peer = $this->socket->getpeername();
             \Co\SgipServer::$connLimit[$peer['address']] --;

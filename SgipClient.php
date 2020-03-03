@@ -26,11 +26,11 @@
 //    发送短信协程
     go(function() use ($o) {
         $text = "测试短信：您的验证码为 4829344";
-        $i = 2;
+        $i = 1000;
         $start = microtime(true) * 1000;
         while ($i--) {
             $req_arr = $o->submit("15811413647", $text, "0000", -1); //默认-1 永不超时
-            var_dump("submit return",$req_arr);
+//            var_dump("submit return",$req_arr);
             if ($req_arr === false) {
                 if ($o->errCode === CMPP_CONN_BROKEN) {
                     echo "连接断开\n";
@@ -38,7 +38,6 @@
                 }
                 var_dump($o->errMsg);
             }
-//            var_dump($req_arr);
         }
         $end = microtime(true) * 1000;
         echo "take " . ($end - $start) . "\n";
@@ -75,7 +74,7 @@
                 switch ($data['Command']) {
                     //SGIP只会收到submit回执包，这里会把sequence的12字节分成三部分，其中Sequence_Id3是submit时候生成的id。
                     case SGIP_SUBMIT_RESP:
-                        var_dump($data);
+                        var_dump($data['Sequence_Id3']);
                         break;
                     default:
                         break;

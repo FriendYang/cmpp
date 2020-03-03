@@ -8,7 +8,7 @@ Co\run(function () {
             array(
                 'client_ips' => ['192.168.99.100', '127.0.0.1', '192.168.99.102'],//允许的对端ip
 //                'client_ips' => '0.0.0.0',//代表不限制ip
-                'max_connection' => 1,//每个ip最大连接数
+                'max_connection' => 100,//每个ip最大连接数
                 'bind_timeout' => 5//tcp连接上之后 几s之后不发送bind就断开连接
             )
     );
@@ -25,7 +25,7 @@ Co\run(function () {
             go(function() use ($data) {
                 switch ($data['Command']) {
                     case SGIP_REPORT:
-                        var_dump($data);//这里会把sequence的12字节分成三部分，其中SubmitSequenceId3是submit时候生成的id。
+                        var_dump($data['SubmitSequenceId3']);//这里会把sequence的12字节分成三部分，其中SubmitSequenceId3是submit时候生成的id。
                         break;
                     case SGIP_DELIVER:
                         var_dump($data);
