@@ -30,7 +30,7 @@
         $start = microtime(true) * 1000;
         while ($i--) {
             $req_arr = $o->submit("15811413647", $text, "0000", -1); //默认-1 永不超时
-//            var_dump("submit return",$req_arr);
+            var_dump("submit return",$req_arr);
             if ($req_arr === false) {
                 if ($o->errCode === CMPP_CONN_BROKEN) {
                     echo "连接断开\n";
@@ -38,6 +38,7 @@
                 }
                 var_dump($o->errMsg);
             }
+//            var_dump($req_arr);
         }
         $end = microtime(true) * 1000;
         echo "take " . ($end - $start) . "\n";

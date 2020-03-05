@@ -126,6 +126,9 @@ class Cmpp2 extends CmppAbstract
     public function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1)
     {
         again:
+        if (is_null($this->ext)) {
+            return FALSE;
+        }
         $ret = $this->ext->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);
         if ($ret === FALSE) {
             $this->syncErr();
@@ -236,6 +239,9 @@ class SgipClient extends CmppAbstract
 
     public function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1)
     {
+        if (substr($mobile, 0, 2) !== "86") {
+            $mobile = "86" . $mobile;
+        }
         $ret = $this->ext->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);
         if ($ret === FALSE) {
             $this->errCode = CMPP_CONN_BROKEN;

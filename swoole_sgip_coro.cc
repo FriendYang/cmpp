@@ -399,16 +399,20 @@ PHP_METHOD(swoole_sgip_coro, submit) {
         e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
     }
     memcpy(submit_req.SPNumber + strlen(sock->src_id_prefix), ext, e_length);
+    memcpy(submit_req.ChargeNumber, "0", sizeof (submit_req.ChargeNumber));
     submit_req.UserCount = 1;
     //手机号
     memcpy(submit_req.UserNumber, mobile, m_length);
     memcpy(submit_req.CorpId, sock->sp_id, sizeof (sock->sp_id));
     memcpy(submit_req.ServiceType, sock->service_id, sizeof (sock->service_id));
     submit_req.FeeType = sock->fee_type[0];
+    memcpy(submit_req.FeeValue, "0", sizeof (submit_req.FeeValue));
+    memcpy(submit_req.GivenValue, "0", sizeof (submit_req.GivenValue));
+    submit_req.AgentFlag = 1;
     submit_req.MorelatetoMTFlag = 2; //引起MT消息的原因 (0点播引起的第一条MT消息 1MO点播引起的非第一条MT消息 2非MO点播引起的MT消息 3系统反馈引起的MT消息)
     submit_req.Priority = 9; //??
     submit_req.ReportFlag = 1;
-//    submit_req.ReportFlag = 2; //for test 用来测试delivery上行
+    //    submit_req.ReportFlag = 2; //for test 用来测试delivery上行
     submit_req.MessageCoding = 8;
 
     submit_req.TP_pid = 0;
@@ -683,7 +687,7 @@ PHP_METHOD(swoole_sgip_coro, parseServerRecv) {
 
         }
         default:
-//            php_swoole_error(E_WARNING, "donnot support this command %d", Command_Id);
+            //            php_swoole_error(E_WARNING, "donnot support this command %d", Command_Id);
             RETURN_FALSE;
     }
 }
