@@ -276,6 +276,11 @@ class SMGP extends CmppAbstract
     {
         if ($ret['IsReport'] == 1) {
             $msgContent = $ret['MsgContent'];
+            $msgContentBinStart = stripos($msgContent, ':') + 1; //
+            
+            $submitMsgIdBin = substr($msgContent, $msgContentBinStart, 10);
+            $ret['MsgID'] = $this->ext->binToHex($submitMsgIdBin);
+            
             if (stripos($msgContent, 'sSubmit_Date') > -1) {
                 $msgContentResult = explode('s', $msgContent);
             } else {

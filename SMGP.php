@@ -92,6 +92,8 @@
 //                            int(1)
 //                            ["MsgFormat"]=>
 //                            int(0)
+//                            ["MsgID"]=>
+//                             string(20) "6495c3afe10491003000"
 //                            ["RecvTime"]=>
 //                            string(25) "2020030619492415811413647"
 //                            ["SrcTermID"]=>

@@ -40,6 +40,7 @@ static PHP_METHOD(swoole_smgp_coro, dologin);
 static PHP_METHOD(swoole_smgp_coro, sendOnePack);
 static PHP_METHOD(swoole_smgp_coro, recvOnePack);
 static PHP_METHOD(swoole_smgp_coro, activeTest);
+static PHP_METHOD(swoole_smgp_coro, binToHex);
 static
 PHP_METHOD(swoole_smgp_coro, submit);
 static
@@ -55,6 +56,7 @@ static const zend_function_entry swoole_smgp_coro_methods[] = {
     PHP_ME(swoole_smgp_coro, recvOnePack, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_smgp_coro, activeTest, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_smgp_coro, logout, NULL, ZEND_ACC_PUBLIC)
+      PHP_ME(swoole_smgp_coro, binToHex, NULL, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 
@@ -678,4 +680,20 @@ PHP_METHOD(swoole_smgp_coro, logout) {
     RETVAL_STRINGL(send_data, send_len);
 
     efree(send_data);
+}
+
+
+
+static
+PHP_METHOD(swoole_smgp_coro, binToHex) {
+    char *content;
+    size_t c_length;
+
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_STRING(content, c_length)
+    ZEND_PARSE_PARAMETERS_END_EX(RETURN_FALSE);
+
+    
+    std::string tmp = BinToHex(content, c_length, 0);
+    RETURN_STRINGL((char*) tmp.c_str(), tmp.length());
 }
