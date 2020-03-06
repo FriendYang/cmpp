@@ -81,6 +81,41 @@
                         break;
                     case SMGP_DELIVER:
                         var_dump("delivery", $data);
+//                        array(10) {
+//                            ["SequenceID"]=>
+//                            int(100003)
+//                            ["RequestID"]=>
+//                            int(3)
+//                            ["MsgID"]=>
+//                            string(20) "6495c3afadc03d003000"
+//                            ["IsReport"]=>
+//                            int(1)
+//                            ["MsgFormat"]=>
+//                            int(0)
+//                            ["RecvTime"]=>
+//                            string(25) "2020030619492415811413647"
+//                            ["SrcTermID"]=>
+//                            string(11) "15811413647"
+//                            ["DestTermID"]=>
+//                            string(9) "118777777"
+//                            ["MsgLength"]=>
+//                            int(110)
+//                            ["MsgContent"]=>//isRport = 1时候才是数组，否则是字符串
+//                            array(6) {
+//                              ["dlvrd"]=>
+//                              string(3) "001"
+//                              ["submit_date"]=>
+//                              string(10) "2003061949"
+//                              ["done_date"]=>
+//                              string(10) "2003061949"
+//                              ["stat"]=>
+//                              string(7) "DELIVRD"
+//                              ["err"]=>
+//                              string(3) "000"
+//                              ["txt"]=>
+//                              string(10) "Զ
+//                                              }
+//                          }
                         break;
                     default:
                         break;

@@ -272,6 +272,28 @@ class SMGP extends CmppAbstract
         return $ret['sequence_id'];
     }
 
+    private function parseContent($ret)
+    {
+        if ($ret['IsReport'] == 1) {
+            $msgContent = $ret['MsgContent'];
+            if (stripos($msgContent, 'sSubmit_Date') > -1) {
+                $msgContentResult = explode('s', $msgContent);
+            } else {
+                $msgContentResult = explode(' ', $msgContent);
+            }
+
+            $result = [];
+            foreach ($msgContentResult as $value) {
+                $temp = explode(':', $value);
+                if (count($temp) == 2) {
+                    $result[$temp[0]] = $temp[1];
+                }
+            }
+            $ret['MsgContent'] = $result;
+        }
+        return $ret;
+    }
+
     public function recv(float $timeout = -1)
     {
         again:
@@ -290,7 +312,7 @@ class SMGP extends CmppAbstract
             case SMGP_DELIVER:
                 $this->sendChannel->push($ret["packdata"]);
                 unset($ret["packdata"]);
-                return $ret;
+                return $this->parseContent($ret);
             case SMGP_SUBMIT_RESP:
                 return $ret;
             default :
