@@ -92,8 +92,6 @@
 //                            int(1)
 //                            ["MsgFormat"]=>
 //                            int(0)
-//                            ["MsgID"]=>
-//                             string(20) "6495c3afe10491003000"
 //                            ["RecvTime"]=>
 //                            string(25) "2020030619492415811413647"
 //                            ["SrcTermID"]=>
@@ -104,6 +102,8 @@
 //                            int(110)
 //                            ["MsgContent"]=>//isRport = 1时候才是数组，否则是字符串
 //                            array(6) {
+//                              ["MsgID"]=>
+//                             string(20) "6495c3afe10491003000"
 //                              ["dlvrd"]=>
 //                              string(3) "001"
 //                              ["submit_date"]=>
