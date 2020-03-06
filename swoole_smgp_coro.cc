@@ -396,7 +396,7 @@ PHP_METHOD(swoole_smgp_coro, recvOnePack) {
             {//收到心跳，需要push到send的channel
                 efree(buf);
                 sock->active_test_count = 0;
-                char *send_data = common_make_req(SMGP_ACTIVE_TEST_RESP, ntohl(resp_head->RequestID), 0, NULL, &out_len);
+                char *send_data = common_make_req(SMGP_ACTIVE_TEST_RESP, ntohl(resp_head->SequenceID), 0, NULL, &out_len);
                 array_init(return_value);
                 add_assoc_long(return_value, "RequestID", SMGP_ACTIVE_TEST_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -406,7 +406,7 @@ PHP_METHOD(swoole_smgp_coro, recvOnePack) {
             case SMGP_TERMINATE:
             {//收到断开连接，需要push到send的channel
                 efree(buf);
-                char *send_data = common_make_req(SMGP_TERMINATE_RESP, ntohl(resp_head->RequestID), 0, NULL, &out_len);
+                char *send_data = common_make_req(SMGP_TERMINATE_RESP, ntohl(resp_head->SequenceID), 0, NULL, &out_len);
                 array_init(return_value);
                 add_assoc_long(return_value, "RequestID", SMGP_TERMINATE_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
