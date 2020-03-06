@@ -199,6 +199,118 @@ class Cmpp3 extends Cmpp2
 
 }
 
+class SMGP extends CmppAbstract
+{
+
+    public function __construct($set)
+    {
+        $this->setting = $set;
+    }
+
+    public function login($ip, $port, $uname, $pwd, float $timeout = -1)
+    {
+        if (is_null($this->ext)) {
+            $this->ext = new \Swoole\Coroutine\SmgpProtocal($this->setting);
+            $ret = $this->ext->dologin($ip, $port, $uname, $pwd, $timeout);
+            if (is_array($ret) && $ret['Status'] == 0) {
+                $this->sendChannel = new \Swoole\Coroutine\Channel(3);
+                //心跳协程
+                \Swoole\Coroutine::create(function () {
+                    while (1) {
+                        \Swoole\Coroutine::sleep($this->setting['active_test_interval']);
+                        if (is_null($this->ext)) {
+                            break; //结束协程
+                        }
+                        $pingData = $this->ext->activeTest();
+                        if ($pingData === FALSE) {
+                            return $this->ext->close();
+                        }
+                        if ($pingData) {
+                            $this->sendChannel->push($pingData);
+                        }
+                    }
+                });
+                //专门的发送协程
+                \Swoole\Coroutine::create(function () {
+                    while (1) {
+                        $pack = $this->sendChannel->pop();
+                        if (is_null($this->ext)) {
+                            break; //结束协程
+                        }
+                        $this->ext->sendOnePack($pack);
+                    }
+                });
+                return $ret;
+            } else {
+                $this->errMsg = $this->ext->errMsg;
+                $this->errCode = $this->ext->errCode;
+                $this->ext = null;
+                return $ret;
+            }
+        } else {
+            $this->errMsg = "the connection is connected";
+            $this->errCode = CMPP_CONN_CONNECTED;
+            return FALSE;
+        }
+    }
+
+    public function realSubmit($mobile, $unicode_text, $ext, float $timeout = -1, int $udhi = -1, int $smsTotalNumber = 1, int $i = 1)
+    {
+        if (is_null($this->ext)) {
+            return FALSE;
+        }
+        $ret = $this->ext->submit($mobile, $unicode_text, $ext, $udhi, $smsTotalNumber, $i);
+        if ($ret === FALSE) {
+            $this->syncErr();
+            return FALSE;
+        }
+        $cRet = $this->sendChannel->push($ret['packdata'], $timeout);
+        if ($cRet === FALSE) {
+            $this->errCode = $this->sendChannel->errCode;
+            return FALSE;
+        }
+        return $ret['sequence_id'];
+    }
+
+    public function recv(float $timeout = -1)
+    {
+        again:
+        $ret = $this->ext->recvOnePack($timeout);
+        if ($ret === false) {
+            if ($this->ext->errCode != SOCKET_ETIMEDOUT) {
+                $this->errCode = CMPP_CONN_BROKEN;
+            }
+            return FALSE;
+        }
+        switch ($ret['RequestID']) {
+            case SMGP_ACTIVE_TEST_RESP:
+            case SMGP_TERMINATE_RESP://对端主动断开给回复的包
+                $this->sendChannel->push($ret["packdata"]);
+                goto again;
+            case SMGP_DELIVER:
+                $this->sendChannel->push($ret["packdata"]);
+                unset($ret["packdata"]);
+                return $ret;
+            case SMGP_SUBMIT_RESP:
+                return $ret;
+            default :
+                return false;
+//                throw new \Exception("error command " . $ret['Command']);
+        }
+    }
+
+    /*
+     * 发送term包 收到回复的term resp后 recv返回false 断开连接
+     */
+
+    public function logout()
+    {
+        $packdata = $this->ext->logout();
+        $this->sendChannel->push($packdata);
+    }
+
+}
+
 class SgipClient extends CmppAbstract
 {//sgip容器类
 
@@ -396,7 +508,6 @@ class SgipConnection extends Server\Connection
 
     public $sendChannel = null;
     private $status = "START";
-    public $peerName = "";
 
     public function recv(float $timeout = 0)
     {
@@ -471,3 +582,4 @@ class_alias("Swoole\\Coroutine\\SgipServer", "Co\\SgipServer", true);
 class_alias("Swoole\\Coroutine\\SgipConnection", "Co\\SgipConnection", true);
 class_alias("Swoole\\Coroutine\\Cmpp2", "Co\\Cmpp2", true);
 class_alias("Swoole\\Coroutine\\Cmpp3", "Co\\Cmpp3", true);
+class_alias("Swoole\\Coroutine\\Smgp", "Co\\Smgp", true);

@@ -174,6 +174,10 @@
 
 参考`SgipClient.php`和`SgipServer.php`
 
+### SMGP
+
+参考`SMGP.php`
+
  
 ### 鸣谢
 

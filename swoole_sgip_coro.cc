@@ -201,16 +201,6 @@ PHP_METHOD(swoole_sgip_coro, __construct) {
     {
         ERROR_AND_RETURN("submit_per_sec must be set");
     }
-
-    if (php_swoole_array_get_value(vht, "protocal", ztmp))
-    {
-        zend_string *tmp = zval_get_string(ztmp);
-        if (strcmp("cmpp3", tmp->val) == 0)
-        {
-            sock->protocal = PROTOCAL_CMPP3;
-        }
-        zend_string_release(tmp);
-    }
 }
 
 static
@@ -277,7 +267,7 @@ PHP_METHOD(swoole_sgip_coro, bind) {
     memcpy(bind_req.Login_Passowrd, secret, l_secret);
 
     uint32_t send_len;
-    uint32_t sequence_id = htonl(cmpp_get_sequence_id(sock));
+    uint32_t sequence_id = htonl(common_get_sequence_id(sock));
     char *send_data = sgip_make_req(SGIP_CONNECT, (char*) &sequence_id, 4, sizeof (bind_req), &bind_req, &send_len);
     bytes = sock->socket->send_all(send_data, send_len);
     swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
@@ -391,7 +381,7 @@ PHP_METHOD(swoole_sgip_coro, submit) {
 
 
     //构造submit req
-    uint32_t sequence_id = cmpp_get_sequence_id(sock);
+    uint32_t sequence_id = common_get_sequence_id(sock);
     sgip_submit submit_req = {0};
     memcpy(submit_req.SPNumber, sock->src_id_prefix, strlen(sock->src_id_prefix));
     if (strlen(sock->src_id_prefix) + e_length >= sizeof (sock->src_id_prefix))
@@ -578,7 +568,7 @@ PHP_METHOD(swoole_sgip_coro, recvOnePack) {
 static
 PHP_METHOD(swoole_sgip_coro, sendOnePack) {
 
-    cmpp_send_one_pack(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+    common_send_one_pack(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
 static

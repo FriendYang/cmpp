@@ -71,6 +71,18 @@ extern "C"
 #define SGIP_REPORT_RESP   0x80000005
 
 
+#define SMGP_CONNECT  0x00000001
+#define SMGP_CONNECT_RESP 0x80000001
+#define SMGP_TERMINATE 0x00000006
+#define SMGP_TERMINATE_RESP 0x80000006
+#define SMGP_SUBMIT  0x00000002
+#define SMGP_SUBMIT_RESP 0x80000002
+#define SMGP_DELIVER 0x00000003
+#define SMGP_DELIVER_RESP 0x80000003
+#define SMGP_ACTIVE_TEST 0x00000004
+#define SMGP_ACTIVE_TEST_RESP 0x80000004
+
+
 
 #define CONNECTING        0
 #define CONNECTED         1
@@ -182,7 +194,7 @@ typedef struct _CMPP2SUBMIT_REQ
     uchar DestUsr_tl;
     uchar Dest_terminal_Id[21]; //**
     uchar Msg_Length;
-    uchar* Msg_Content; //**
+    uchar Msg_Content; //**
     uchar Reserve[8];
 
 } cmpp2_submit_req;
@@ -260,7 +272,7 @@ typedef struct _CMPP3SUBMIT_REQ
     uchar Dest_terminal_Id[32]; //**
     uchar Dest_terminal_type;
     uchar Msg_Length;
-    uchar* Msg_Content; //**
+    uchar Msg_Content; //**
     //    uchar LinkID[20];
     uchar Reserve[20]; //hack for union name with template function
 
@@ -335,6 +347,7 @@ typedef struct _SGIPHEAD
 } sgip_head;
 
 //sgip resp是通用格式
+
 typedef struct _SGIP_RESP
 {
     uchar Result;
@@ -375,7 +388,6 @@ typedef struct _SGIPSUBMIT
     uchar Reserve[8];
 } sgip_submit;
 
-
 typedef struct _SGIPDELIVER
 {
     uchar UserNumber[21];
@@ -399,6 +411,88 @@ typedef struct _SGIPREPORT
 } sgip_report;
 
 
+
+
+//*****************************SMGP*******************************//
+
+typedef struct _SMGPHEAD
+{
+    uint32_t PacketLength;
+    uint32_t RequestID;
+    uint32_t SequenceID;
+} smgp_head;
+
+typedef struct _SMGPLOGIN
+{
+    uchar ClientID[8];
+    uchar AuthenticatorClient[16];
+    uchar LoginMode;
+    uint32_t TimeStamp;
+    uchar ClientVersion;
+} smgp_login;
+
+typedef struct _SMGPLOGIN_RESP
+{
+    uint32_t Status;
+    uchar AuthenticatorServer[16];
+    uchar ServerVersion;
+} smgp_login_resp;
+
+typedef struct _SMGPSUBMIT
+{
+    uchar MsgType;
+    uchar NeedReport;
+    uchar Priority;
+    uchar ServiceID[10];
+    uchar FeeType[2];
+    uchar FeeCode[6];
+    uchar FixedFee[6];
+    uchar MsgFormat;
+    uchar ValidTime[17];
+    uchar AtTime[17];
+    uchar SrcTermID[21]; //**
+    uchar ChargeTermID[21]; //**
+    uchar DestTermIDCount;
+    uchar DestTermID[21];
+    uchar Msg_Length;
+    uchar Msg_Content; //**
+    uchar Reserve[8];
+} smgp_submit;
+
+typedef struct TLV_S
+{
+    uint16_t Tag;
+    uint16_t Length;
+    uchar value;
+} TVL;
+
+typedef struct _SMGPSUBMIT_RESP
+{
+    uchar MsgID[10];
+    uint32_t Status;
+} smgp_submit_resp;
+
+
+typedef struct _SMGPDELIVER
+{
+    uchar MsgID[10];
+    uchar IsReport;
+    uchar MsgFormat;
+    uchar RecvTime[14];
+    uchar SrcTermID[21];
+    uchar DestTermID[21];
+    uchar MsgLength;
+    uchar MsgContent;
+    uchar Reserve[8];
+} smgp_delivery;
+
+typedef struct _SMGPDELIVER_RESP
+{
+    uchar MsgID[10];
+    uint32_t Status;
+} smgp_delivery_resp;
+
+
 #pragma pack ()
 
 
@@ -406,9 +500,10 @@ typedef struct _SGIPREPORT
 socket_coro* php_swoole_cmpp_coro_fetch_object(zend_object *obj);
 void swoole_cmpp_coro_sync_properties(zval *zobject, socket_coro *sock);
 void php_swoole_cmpp_coro_free_object(zend_object *object);
-uint32_t cmpp_get_sequence_id(socket_coro *obj);
+uint32_t common_get_sequence_id(socket_coro *obj);
 zend_object* php_swoole_cmpp_coro_create_object(zend_class_entry *ce);
 void php_swoole_sgip_coro_minit(int module_number);
+void php_swoole_smgp_coro_minit(int module_number);
 
 static zend_always_inline void cmpp_md5(unsigned char *digest, const char *src, size_t len)
 {
@@ -420,7 +515,7 @@ static zend_always_inline void cmpp_md5(unsigned char *digest, const char *src, 
     //    make_digest_ex(des, digest, 16);
 }
 
-static zend_always_inline char* cmpp_make_req(uint32_t cmd, uint32_t sequence_Id, uint32_t body_len, void *body, uint32_t *out)
+static zend_always_inline char* common_make_req(uint32_t cmd, uint32_t sequence_Id, uint32_t body_len, void *body, uint32_t *out)
 {
 
     cmpp_head head;
@@ -494,11 +589,7 @@ cmpp_recv_one_pack(socket_coro *sock, uint32_t *out, T &resp_head)
     return start;
 }
 
-
-
-
-
-static zend_always_inline void cmpp_send_one_pack(INTERNAL_FUNCTION_PARAMETERS)
+static zend_always_inline void common_send_one_pack(INTERNAL_FUNCTION_PARAMETERS)
 {
     char *data;
     size_t length;
@@ -519,6 +610,35 @@ static zend_always_inline void cmpp_send_one_pack(INTERNAL_FUNCTION_PARAMETERS)
     }
 
     RETURN_LONG(length);
+}
+
+/*
+ * 将一串char转换成16进制的字符串
+ * 由于一个char一个字节，可以表示2个16进制，所以输入size 输出size*2
+ */
+static inline std::string BinToHex(const std::string &strBin, size_t size, bool bIsUpper/* = false*/)
+{
+    std::string strHex;
+    strHex.resize(size * 2);
+    for (size_t i = 0; i < size; i++)
+    {
+        uint8_t cTemp = strBin[i];
+        for (size_t j = 0; j < 2; j++)
+        {
+            uint8_t cCur = (cTemp & 0x0f);
+            if (cCur < 10)
+            {
+                cCur += '0';
+            } else
+            {
+                cCur += ((bIsUpper ? 'A' : 'a') - 10);
+            }
+            strHex[2 * i + 1 - j] = cCur;
+            cTemp >>= 4;
+        }
+    }
+
+    return strHex;
 }
 
 #endif

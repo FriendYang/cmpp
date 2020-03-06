@@ -67,7 +67,7 @@ cmpp_eval(std::string code, std::string filename) {
 
 PHP_RINIT_FUNCTION(swoole_cmpp) {
     //for test
-    cmpp_eval(cmpp_library_source_cmpp2, "@cmpp-src/library/cmpp2.php");
+//    cmpp_eval(cmpp_library_source_cmpp2, "@cmpp-src/library/cmpp2.php");
     return SUCCESS;
 };
 
@@ -147,7 +147,7 @@ php_swoole_cmpp_coro_free_object(zend_object *object) {
 }
 
 uint32_t
-cmpp_get_sequence_id(socket_coro *obj) {
+common_get_sequence_id(socket_coro *obj) {
     if (obj->sequence_id >= obj->sequence_end)
     {
         obj->sequence_id = obj->sequence_start;
@@ -512,7 +512,7 @@ make_submit_template(T &submit_req, uint32_t content_offset, socket_coro* sock, 
     head.Sequence_Id = htonl(sequence_id);
     if (udhi == -1)
     {
-        send_len = sizeof (cmpp_head) + sizeof (submit_req) - 1 + c_length;
+        send_len = sizeof (cmpp_head) + sizeof (submit_req) - 1 + c_length;//减去Msg_Content一字节占位空间
     }
     else
     {
@@ -632,7 +632,7 @@ PHP_METHOD(swoole_cmpp_coro, dologin) {
     conn_req.Timestamp = htonl(timestamp);
 
     uint32_t send_len;
-    char *send_data = cmpp_make_req(CMPP2_CONNECT, cmpp_get_sequence_id(sock), sizeof (conn_req), &conn_req, &send_len);
+    char *send_data = common_make_req(CMPP2_CONNECT, common_get_sequence_id(sock), sizeof (conn_req), &conn_req, &send_len);
     bytes = sock->socket->send_all(send_data, send_len);
     swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
     efree(send_data);
@@ -728,7 +728,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
                 efree(buf);
                 sock->active_test_count = 0;
                 cmpp2_active_resp active_resp = {0};
-                char *send_data = cmpp_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), sizeof (active_resp), &active_resp, &out_len);
+                char *send_data = common_make_req(CMPP2_ACTIVE_TEST_RESP, ntohl(resp_head->Sequence_Id), sizeof (active_resp), &active_resp, &out_len);
                 array_init(return_value);
                 add_assoc_long(return_value, "Command", CMPP2_ACTIVE_TEST_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -738,7 +738,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
             case CMPP2_TERMINATE:
             {//收到断开连接，需要push到send的channel
                 efree(buf);
-                char *send_data = cmpp_make_req(CMPP2_TERMINATE_RESP, ntohl(resp_head->Sequence_Id), 0, NULL, &out_len);
+                char *send_data = common_make_req(CMPP2_TERMINATE_RESP, ntohl(resp_head->Sequence_Id), 0, NULL, &out_len);
                 array_init(return_value);
                 add_assoc_long(return_value, "Command", CMPP2_TERMINATE_RESP);
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -776,7 +776,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
                     cmpp3_delivery_req *delivery_req = (cmpp3_delivery_req*) ((char*) resp_head + sizeof (cmpp_head));
                     cmpp3_delivery_resp del_resp = {0};
                     make_delivery_template(delivery_req, del_resp, resp_head->Sequence_Id, return_value, sock);
-                    send_data = cmpp_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
+                    send_data = common_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 }
                 else
                 {
@@ -784,7 +784,7 @@ PHP_METHOD(swoole_cmpp_coro, recvOnePack) {
                     //                    cmpp2_delivery_resp del_resp = make_delivery_template<cmpp2_delivery_resp>(delivery_req, resp_head->Sequence_Id, return_value);//返回值模板类型需手动指定
                     cmpp2_delivery_resp del_resp = {0};
                     make_delivery_template(delivery_req, del_resp, resp_head->Sequence_Id, return_value, sock);
-                    send_data = cmpp_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
+                    send_data = common_make_req(CMPP2_DELIVER_RESP, ntohl(resp_head->Sequence_Id), sizeof (del_resp), &del_resp, &out_len);
                 }
 
                 add_assoc_stringl(return_value, "packdata", send_data, out_len);
@@ -864,7 +864,7 @@ PHP_METHOD(swoole_cmpp_coro, submit) {
         sock->submit_count = 0;
     }
 
-    uint32_t sequence_id = cmpp_get_sequence_id(sock);
+    uint32_t sequence_id = common_get_sequence_id(sock);
     uint32_t send_len;
     char *start = NULL;
     if (sock->protocal == PROTOCAL_CMPP3)
@@ -905,9 +905,9 @@ PHP_METHOD(swoole_cmpp_coro, activeTest) {
         RETURN_FALSE;
     }
 
-    cmpp_get_sequence_id(sock);
+    common_get_sequence_id(sock);
     uint32_t send_len;
-    char *send_data = cmpp_make_req(CMPP2_ACTIVE_TEST, sock->sequence_id, 0, NULL, &send_len);
+    char *send_data = common_make_req(CMPP2_ACTIVE_TEST, sock->sequence_id, 0, NULL, &send_len);
     RETVAL_STRINGL(send_data, send_len);
     efree(send_data);
 
@@ -919,16 +919,16 @@ PHP_METHOD(swoole_cmpp_coro, activeTest) {
 static
 PHP_METHOD(swoole_cmpp_coro, sendOnePack) {
 
-    cmpp_send_one_pack(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+    common_send_one_pack(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
 static
 PHP_METHOD(swoole_cmpp_coro, logout) {
     swoole_get_socket_coro(sock, ZEND_THIS);
 
-    cmpp_get_sequence_id(sock);
+    common_get_sequence_id(sock);
     uint32_t send_len;
-    char *send_data = cmpp_make_req(CMPP2_TERMINATE, sock->sequence_id, 0, NULL, &send_len);
+    char *send_data = common_make_req(CMPP2_TERMINATE, sock->sequence_id, 0, NULL, &send_len);
     RETVAL_STRINGL(send_data, send_len);
 
     //    Socket::timeout_setter ts(sock->socket, -1, SW_TIMEOUT_WRITE);
@@ -962,6 +962,7 @@ PHP_MINIT_FUNCTION(swoole_cmpp) {
 
     php_swoole_cmpp_coro_minit(module_number);
     php_swoole_sgip_coro_minit(module_number);
+    php_swoole_smgp_coro_minit(module_number);
 
     return SUCCESS;
 }
