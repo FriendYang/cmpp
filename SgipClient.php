@@ -1,6 +1,5 @@
 <?php
 
-
 \Co\run(function() {
     $o = new \Co\SgipClient(
             [
@@ -11,6 +10,7 @@
         'submit_per_sec' => 100, //每秒多少条限速，达到这个速率后submit会自动Co sleep这个协程，睡眠的时间按照剩余的时间来
         //例如每秒100，会分成10分，100ms最多发10条，如果前10ms就发送完了10条，submit的时候会自动Co sleep 90ms。
         'fee_type' => '1', //资费类别
+        'corp_id' => '1', //企业id
             ]
     );
     $arr = $o->login("127.0.0.1", 8001, "123456", "123456", 10); //10s登录超时
@@ -30,7 +30,7 @@
         $start = microtime(true) * 1000;
         while ($i--) {
             $req_arr = $o->submit("15811413647", $text, "0000", -1); //默认-1 永不超时
-            var_dump("submit return",$req_arr);
+            var_dump("submit return", $req_arr);
             if ($req_arr === false) {
                 if ($o->errCode === CMPP_CONN_BROKEN) {
                     echo "连接断开\n";

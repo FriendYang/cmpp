@@ -201,6 +201,24 @@ PHP_METHOD(swoole_sgip_coro, __construct) {
     {
         ERROR_AND_RETURN("submit_per_sec must be set");
     }
+
+    
+    if (php_swoole_array_get_value(vht, "corp_id", ztmp))
+    {
+      
+        zend_string *tmp = zval_get_string(ztmp);
+        if (tmp->len > sizeof (sock->sp_id))
+        {
+            ERROR_AND_RETURN("corp_id is too long");
+        }
+        memcpy(sock->sp_id, tmp->val, tmp->len);
+        zend_string_release(tmp);
+
+    }
+    else
+    {
+        ERROR_AND_RETURN("corp_id must be set");
+    }
 }
 
 static
@@ -222,8 +240,8 @@ PHP_METHOD(swoole_sgip_coro, bind) {
     char *host;
     size_t l_host;
     zend_long port = 0;
-    char *spId;
-    size_t l_spId;
+    char *name;
+    size_t l_name;
     char *secret;
     size_t l_secret;
     double timeout = 10;
@@ -232,7 +250,7 @@ PHP_METHOD(swoole_sgip_coro, bind) {
     ZEND_PARSE_PARAMETERS_START(4, 5)
     Z_PARAM_STRING(host, l_host)
     Z_PARAM_LONG(port)
-    Z_PARAM_STRING(spId, l_spId)
+    Z_PARAM_STRING(name, l_name)
     Z_PARAM_STRING(secret, l_secret)
     Z_PARAM_OPTIONAL
     Z_PARAM_DOUBLE(timeout)
@@ -253,17 +271,9 @@ PHP_METHOD(swoole_sgip_coro, bind) {
         RETURN_FALSE;
     }
 
-    if (l_spId>sizeof (sock->sp_id))
-    {
-        php_swoole_error(E_WARNING, "Invalid sp id");
-        RETURN_FALSE;
-    }
-
-    memcpy(sock->sp_id, spId, l_spId);
-
     sgip_bind bind_req = {0};
     bind_req.Login_Type = 1;
-    memcpy(bind_req.Login_Name, spId, l_spId);
+    memcpy(bind_req.Login_Name, name, l_name);
     memcpy(bind_req.Login_Passowrd, secret, l_secret);
 
     uint32_t send_len;
@@ -389,15 +399,15 @@ PHP_METHOD(swoole_sgip_coro, submit) {
         e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
     }
     memcpy(submit_req.SPNumber + strlen(sock->src_id_prefix), ext, e_length);
-    memcpy(submit_req.ChargeNumber, "0", sizeof (submit_req.ChargeNumber));
+    memset(submit_req.ChargeNumber, "0", sizeof (submit_req.ChargeNumber));
     submit_req.UserCount = 1;
     //手机号
     memcpy(submit_req.UserNumber, mobile, m_length);
     memcpy(submit_req.CorpId, sock->sp_id, sizeof (sock->sp_id));
     memcpy(submit_req.ServiceType, sock->service_id, sizeof (sock->service_id));
     submit_req.FeeType = sock->fee_type[0];
-    memcpy(submit_req.FeeValue, "0", sizeof (submit_req.FeeValue));
-    memcpy(submit_req.GivenValue, "0", sizeof (submit_req.GivenValue));
+    memset(submit_req.FeeValue, "0", sizeof (submit_req.FeeValue));
+    memset(submit_req.GivenValue, "0", sizeof (submit_req.GivenValue));
     submit_req.AgentFlag = 1;
     submit_req.MorelatetoMTFlag = 2; //引起MT消息的原因 (0点播引起的第一条MT消息 1MO点播引起的非第一条MT消息 2非MO点播引起的MT消息 3系统反馈引起的MT消息)
     submit_req.Priority = 9; //??
