@@ -565,7 +565,8 @@ PHP_METHOD(swoole_smgp_coro, submit) {
         e_length = sizeof (sock->src_id_prefix) - strlen(sock->src_id_prefix);
     }
     memcpy(submit_req.SrcTermID + strlen(sock->src_id_prefix), ext, e_length);
-    //    submit_req.ChargeTermID = "";
+    //手机号
+    memcpy(submit_req.ChargeTermID, mobile, m_length);
     submit_req.DestTermIDCount = 1;
     //手机号
     memcpy(submit_req.DestTermID, mobile, m_length);
