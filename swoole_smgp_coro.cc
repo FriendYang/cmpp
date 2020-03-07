@@ -56,7 +56,7 @@ static const zend_function_entry swoole_smgp_coro_methods[] = {
     PHP_ME(swoole_smgp_coro, recvOnePack, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_smgp_coro, activeTest, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(swoole_smgp_coro, logout, NULL, ZEND_ACC_PUBLIC)
-      PHP_ME(swoole_smgp_coro, binToHex, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(swoole_smgp_coro, binToHex, NULL, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 
@@ -427,8 +427,8 @@ PHP_METHOD(swoole_smgp_coro, recvOnePack) {
                 add_assoc_long(return_value, "Sequence_Id", ntohl(resp_head->SequenceID));
                 add_assoc_long(return_value, "RequestID", SMGP_SUBMIT_RESP);
                 smgp_submit_resp *submit_resp = (smgp_submit_resp*) ((char*) buf + sizeof (smgp_head));
-                std::string tmp = BinToHex((char*) submit_resp->MsgID, sizeof (submit_resp->MsgID), 0);
-                add_assoc_stringl(return_value, "MsgID", (char*) tmp.c_str(), tmp.length());
+                zend_string *tmp = bin2hex((const uchar*) submit_resp->MsgID, sizeof (submit_resp->MsgID));
+                add_assoc_str(return_value, "MsgID", tmp);
                 add_assoc_long(return_value, "Status", ntohl(submit_resp->Status));
                 efree(buf);
                 return;
@@ -441,8 +441,8 @@ PHP_METHOD(swoole_smgp_coro, recvOnePack) {
                 smgp_delivery *delivery_req = (smgp_delivery*) ((char*) resp_head + sizeof (smgp_head));
                 add_assoc_long(return_value, "SequenceID", ntohl(resp_head->SequenceID));
                 add_assoc_long(return_value, "RequestID", SMGP_DELIVER);
-                std::string tmp = BinToHex((char*) delivery_req->MsgID, sizeof (delivery_req->MsgID), 0);
-                add_assoc_stringl(return_value, "MsgID", (char*) tmp.c_str(), tmp.length());
+                zend_string *tmp = bin2hex((const uchar*) delivery_req->MsgID, sizeof (delivery_req->MsgID));
+                add_assoc_str(return_value, "MsgID", tmp);
                 add_assoc_long(return_value, "IsReport", delivery_req->IsReport);
                 add_assoc_long(return_value, "MsgFormat", delivery_req->MsgFormat);
                 add_assoc_string(return_value, "RecvTime", (char*) delivery_req->RecvTime);
@@ -452,6 +452,7 @@ PHP_METHOD(swoole_smgp_coro, recvOnePack) {
                 char *content = (char*) emalloc(delivery_req->MsgLength);
                 memcpy(content, (char *) &delivery_req->MsgContent, delivery_req->MsgLength);
                 add_assoc_stringl(return_value, "MsgContent", content, delivery_req->MsgLength);
+
                 //构造resp
                 smgp_delivery_resp del_resp = {0};
                 del_resp.Status = 0;
@@ -683,8 +684,6 @@ PHP_METHOD(swoole_smgp_coro, logout) {
     efree(send_data);
 }
 
-
-
 static
 PHP_METHOD(swoole_smgp_coro, binToHex) {
     char *content;
@@ -694,7 +693,8 @@ PHP_METHOD(swoole_smgp_coro, binToHex) {
     Z_PARAM_STRING(content, c_length)
     ZEND_PARSE_PARAMETERS_END_EX(RETURN_FALSE);
 
-    
-    std::string tmp = BinToHex(content, c_length, 0);
-    RETURN_STRINGL((char*) tmp.c_str(), tmp.length());
+
+    zend_string *tmp = bin2hex((const uchar*) content, c_length);
+
+    RETURN_STR(tmp);
 }

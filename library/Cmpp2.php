@@ -223,7 +223,8 @@ class SMGP extends CmppAbstract
                         }
                         $pingData = $this->ext->activeTest();
                         if ($pingData === FALSE) {
-                            return $this->ext->close();
+//                            return $this->ext->close();
+                            return FALSE;
                         }
                         if ($pingData) {
                             $this->sendChannel->push($pingData);

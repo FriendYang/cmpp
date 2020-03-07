@@ -45,7 +45,7 @@
         $end = microtime(true) * 1000;
         echo "take " . ($end - $start) . "\n";
     });
-    //长短信mb_strlen($text, 'UTF-8')>70
+//    长短信mb_strlen($text, 'UTF-8')>70
 //    go(function() use ($o) {
 //        $text = "测试长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长"
 //                . "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长"

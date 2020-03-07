@@ -482,7 +482,7 @@ typedef struct _SMGPDELIVER
     uchar SrcTermID[21];
     uchar DestTermID[21];
     uchar MsgLength;
-    uchar MsgContent;
+    uchar MsgContent;//占位
     uchar Reserve[8];
 } smgp_delivery;
 
@@ -612,33 +612,25 @@ static zend_always_inline void common_send_one_pack(INTERNAL_FUNCTION_PARAMETERS
     RETURN_LONG(length);
 }
 
+
 /*
  * 将一串char转换成16进制的字符串
  * 由于一个char一个字节，可以表示2个16进制，所以输入size 输出size*2
  */
-static inline std::string BinToHex(const std::string &strBin, size_t size, bool bIsUpper/* = false*/)
+static char hexconvtab[] = "0123456789abcdef";
+static inline zend_string *bin2hex(const unsigned char *old, const size_t oldlen)
 {
-    std::string strHex;
-    strHex.resize(size * 2);
-    for (size_t i = 0; i < size; i++)
-    {
-        uint8_t cTemp = strBin[i];
-        for (size_t j = 0; j < 2; j++)
-        {
-            uint8_t cCur = (cTemp & 0x0f);
-            if (cCur < 10)
-            {
-                cCur += '0';
-            } else
-            {
-                cCur += ((bIsUpper ? 'A' : 'a') - 10);
-            }
-            strHex[2 * i + 1 - j] = cCur;
-            cTemp >>= 4;
+        zend_string *result;
+        size_t i, j;
+
+        result = zend_string_safe_alloc(oldlen, 2 * sizeof(char), 0, 0);
+
+        for (i = j = 0; i < oldlen; i++) {
+                ZSTR_VAL(result)[j++] = hexconvtab[old[i] >> 4];
+                ZSTR_VAL(result)[j++] = hexconvtab[old[i] & 15];
         }
-    }
+        ZSTR_VAL(result)[j] = '\0';
 
-    return strHex;
-}
-
+        return result;
+} 
 #endif
