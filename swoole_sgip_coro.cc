@@ -17,12 +17,11 @@
  */
 
 #include "php_swoole_cxx.h"
+#include "swoole_cmpp_coro.h"
 #include <string>
 #include "ext/standard/php_smart_string.h"
 #include "Zend/zend_API.h"
 #include "php_cmpp_library.h"
-#include "swoole_cmpp_coro.h"
-
 
 using namespace swoole;
 using namespace coroutine;
@@ -434,12 +433,21 @@ PHP_METHOD(swoole_sgip_coro, submit) {
         submit_req.MessageLength = htonl(c_length + sizeof (udhi_head));
     }
 
-
     //构造完整req
     sgip_head head;
     uint32_t send_len;
     head.Command_Id = htonl(SGIP_SUBMIT);
+    
+    uint32_t sp_id = (uint32_t) atoi(sock->sp_id);
+    head.Sequence_Id.v.Sequence_Id1 = htonl(sp_id);
+    
+    zend_string *date_str = php_format_date((char *) ZEND_STRL("mdHis"), time(NULL), 0);
+    uint32_t timestamp = (uint32_t) atoi(date_str->val);
+    head.Sequence_Id.v.Sequence_Id2 = htonl(timestamp);
+    zend_string_release(date_str);
+    
     head.Sequence_Id.v.Sequence_Id3 = htonl(sequence_id);
+    
     if (udhi == -1)
     {
         send_len = sizeof (sgip_head) + sizeof (submit_req) - 1 + c_length;
