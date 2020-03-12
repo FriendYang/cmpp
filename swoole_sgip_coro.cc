@@ -370,12 +370,12 @@ PHP_METHOD(swoole_sgip_coro, submit) {
     }
 
     //限速
-    long time = get_current_time();
-    if (time - sock->start_submit_time < 100)
+    long limit_time = get_current_time();
+    if (limit_time - sock->start_submit_time < 100)
     {
         if (sock->submit_count >= sock->submit_limit_100ms)
         {
-            long sleep_time = 100 - (time - sock->start_submit_time);
+            long sleep_time = 100 - (limit_time - sock->start_submit_time);
             double sleep_sec = ((double) sleep_time) / 1000;
             System::sleep(sleep_sec);
             sock->start_submit_time = get_current_time();
@@ -384,10 +384,9 @@ PHP_METHOD(swoole_sgip_coro, submit) {
     }
     else
     {//下一轮100ms
-        sock->start_submit_time = time;
+        sock->start_submit_time = limit_time;
         sock->submit_count = 0;
     }
-
 
     //构造submit req
     uint32_t sequence_id = common_get_sequence_id(sock);
