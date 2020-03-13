@@ -218,6 +218,23 @@ PHP_METHOD(swoole_sgip_coro, __construct) {
     {
         ERROR_AND_RETURN("corp_id must be set");
     }
+    
+    if (php_swoole_array_get_value(vht, "node_id", ztmp))
+    {
+      
+        zend_string *tmp = zval_get_string(ztmp);
+        if (tmp->len > sizeof (sock->node_id))
+        {
+            ERROR_AND_RETURN("node id is too long");
+        }
+        memcpy(sock->node_id, tmp->val, tmp->len);
+        zend_string_release(tmp);
+
+    }
+    else
+    {
+        ERROR_AND_RETURN("node id must be set");
+    }
 }
 
 static
@@ -437,8 +454,8 @@ PHP_METHOD(swoole_sgip_coro, submit) {
     uint32_t send_len;
     head.Command_Id = htonl(SGIP_SUBMIT);
     
-    uint32_t sp_id = (uint32_t) atoi(sock->sp_id);
-    head.Sequence_Id.v.Sequence_Id1 = htonl(sp_id);
+    uint32_t node_id = (uint32_t) atoi(sock->node_id);
+    head.Sequence_Id.v.Sequence_Id1 = htonl(node_id);
     
     zend_string *date_str = php_format_date((char *) ZEND_STRL("mdHis"), time(NULL), 0);
     uint32_t timestamp = (uint32_t) atoi(date_str->val);

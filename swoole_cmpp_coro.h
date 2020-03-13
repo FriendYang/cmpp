@@ -133,6 +133,7 @@ typedef struct
     char service_id[10];
     char src_id_prefix[20];
     char sp_id[6];
+    char node_id[10];//sgip only
     uchar fee_type[2];
     uint32_t submit_limit_100ms; //100ms内最多执行多少条submit
     uint32_t submit_count; //计数
