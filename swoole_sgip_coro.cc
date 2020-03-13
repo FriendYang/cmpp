@@ -201,10 +201,10 @@ PHP_METHOD(swoole_sgip_coro, __construct) {
         ERROR_AND_RETURN("submit_per_sec must be set");
     }
 
-    
+
     if (php_swoole_array_get_value(vht, "corp_id", ztmp))
     {
-      
+
         zend_string *tmp = zval_get_string(ztmp);
         if (tmp->len > sizeof (sock->sp_id))
         {
@@ -218,10 +218,10 @@ PHP_METHOD(swoole_sgip_coro, __construct) {
     {
         ERROR_AND_RETURN("corp_id must be set");
     }
-    
+
     if (php_swoole_array_get_value(vht, "node_id", ztmp))
     {
-      
+
         zend_string *tmp = zval_get_string(ztmp);
         if (tmp->len > sizeof (sock->node_id))
         {
@@ -293,8 +293,19 @@ PHP_METHOD(swoole_sgip_coro, bind) {
     memcpy(bind_req.Login_Passowrd, secret, l_secret);
 
     uint32_t send_len;
+
+    //为了构造seq id
     uint32_t sequence_id = htonl(common_get_sequence_id(sock));
-    char *send_data = sgip_make_req(SGIP_CONNECT, (char*) &sequence_id, 4, sizeof (bind_req), &bind_req, &send_len);
+    sgip_head head_tmp = {0};
+    uint32_t node_id = (uint32_t) atoi(sock->node_id);
+    head_tmp.Sequence_Id.v.Sequence_Id1 = htonl(node_id);
+    zend_string *date_str = php_format_date((char *) ZEND_STRL("mdHis"), time(NULL), 0);
+    uint32_t timestamp = (uint32_t) atoi(date_str->val);
+    head_tmp.Sequence_Id.v.Sequence_Id2 = htonl(timestamp);
+    zend_string_release(date_str);
+    head_tmp.Sequence_Id.v.Sequence_Id3 = sequence_id;
+
+    char *send_data = sgip_make_req(SGIP_CONNECT, (char*) head_tmp.Sequence_Id.Sequence_Id_Char, 12, sizeof (bind_req), &bind_req, &send_len);
     bytes = sock->socket->send_all(send_data, send_len);
     swoole_cmpp_coro_sync_properties(ZEND_THIS, sock);
     efree(send_data);
@@ -453,17 +464,17 @@ PHP_METHOD(swoole_sgip_coro, submit) {
     sgip_head head;
     uint32_t send_len;
     head.Command_Id = htonl(SGIP_SUBMIT);
-    
+
     uint32_t node_id = (uint32_t) atoi(sock->node_id);
     head.Sequence_Id.v.Sequence_Id1 = htonl(node_id);
-    
+
     zend_string *date_str = php_format_date((char *) ZEND_STRL("mdHis"), time(NULL), 0);
     uint32_t timestamp = (uint32_t) atoi(date_str->val);
     head.Sequence_Id.v.Sequence_Id2 = htonl(timestamp);
     zend_string_release(date_str);
-    
+
     head.Sequence_Id.v.Sequence_Id3 = htonl(sequence_id);
-    
+
     if (udhi == -1)
     {
         send_len = sizeof (sgip_head) + sizeof (submit_req) - 1 + c_length;
@@ -608,9 +619,22 @@ PHP_METHOD(swoole_sgip_coro, sendOnePack) {
 static
 PHP_METHOD(swoole_sgip_coro, unbindPack) {
 
-    char seq[12] = {0};
     uint32_t out_len;
-    char *send_data = sgip_make_req(SGIP_UNBIND, (char *) seq, 12, 0, NULL, &out_len);
+    swoole_get_socket_coro(sock, ZEND_THIS);
+
+    //为了构造seq id
+    uint32_t sequence_id = htonl(common_get_sequence_id(sock));
+    sgip_head head_tmp = {0};
+    uint32_t node_id = (uint32_t) atoi(sock->node_id);
+    head_tmp.Sequence_Id.v.Sequence_Id1 = htonl(node_id);
+    zend_string *date_str = php_format_date((char *) ZEND_STRL("mdHis"), time(NULL), 0);
+    uint32_t timestamp = (uint32_t) atoi(date_str->val);
+    head_tmp.Sequence_Id.v.Sequence_Id2 = htonl(timestamp);
+    zend_string_release(date_str);
+    head_tmp.Sequence_Id.v.Sequence_Id3 = sequence_id;
+
+
+    char *send_data = sgip_make_req(SGIP_UNBIND, (char *) head_tmp.Sequence_Id.Sequence_Id_Char, 12, 0, NULL, &out_len);
     RETURN_STRINGL(send_data, out_len);
 
 }
